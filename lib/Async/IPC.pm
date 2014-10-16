@@ -1,14 +1,62 @@
 package Async::IPC;
 
-use 5.01;
+use 5.010001;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 1 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 2 $ =~ /\d+/gmx );
 
 use Moo;
-use Class::Usul::Constants;
-use Class::Usul::Functions  qw( throw );
+use Async::IPC::Functions  qw( log_leader );
+use Async::IPC::Loop;
+use Class::Usul::Constants qw( TRUE );
+use Class::Usul::Functions qw( ensure_class_loaded first_char );
+use Class::Usul::Types     qw( BaseType Object );
+use POSIX                  qw( WEXITSTATUS );
 
-extends q(Class::Usul::Programs);
+# Public attributes
+has 'builder' => is => 'ro',   isa => BaseType, handles => [ 'log' ],
+   required   => TRUE;
+
+has 'loop'    => is => 'lazy', isa => Object,
+   builder    => sub { Async::IPC::Loop->new };
+
+# Public methods
+sub new_notifier {
+   my ($self, %p) = @_; my $log = $self->log;
+
+   my $ddesc = my $desc = delete $p{desc}; my $key = delete $p{key};
+
+   my $log_level = delete $p{log_level} || 'info'; my $type = delete $p{type};
+
+   my $logger = sub {
+      my ($level, $id, $msg) = @_; my $lead = log_leader $level, $key, $id;
+
+      return $log->$level( $lead.$msg );
+   };
+
+   my $_on_exit = delete $p{on_exit}; my $on_exit = sub {
+      my $pid = shift; my $rv = WEXITSTATUS( shift );
+
+      $logger->( $log_level, $pid, ucfirst "${desc} stopped rv ${rv}" );
+
+      return $_on_exit ? $_on_exit->( $pid, $rv ) : undef;
+   };
+
+   if ($type eq 'function') { $desc .= ' worker'; $ddesc = $desc.' pool' }
+
+   my $class = first_char $type eq '+' ? (substr $type, 1)
+                                       : __PACKAGE__.'::'.(ucfirst $type);
+
+   ensure_class_loaded $class;
+
+   my $notifier = $class->new( builder     => $self->builder,
+                               description => $desc,
+                               log_key     => $key,
+                               on_exit     => $on_exit, %p, );
+
+   $logger->( $log_level, $notifier->pid, "Started ${ddesc}" );
+
+   return $notifier;
+}
 
 1;
 
