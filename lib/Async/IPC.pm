@@ -2,7 +2,7 @@ package Async::IPC;
 
 use 5.010001;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 2 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 3 $ =~ /\d+/gmx );
 
 use Moo;
 use Async::IPC::Functions  qw( log_leader );
@@ -51,6 +51,7 @@ sub new_notifier {
    my $notifier = $class->new( builder     => $self->builder,
                                description => $desc,
                                log_key     => $key,
+                               loop        => $self->loop,
                                on_exit     => $on_exit, %p, );
 
    $logger->( $log_level, $notifier->pid, "Started ${ddesc}" );

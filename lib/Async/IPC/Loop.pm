@@ -9,7 +9,7 @@ use Class::Usul::Functions qw( arg_list );
 use English                qw( -no_match_vars );
 use Scalar::Util           qw( blessed );
 
-my $Events = {};
+my $Cache = {};
 
 # Construction
 sub new {
@@ -150,11 +150,11 @@ sub uuid {
 
 # Private methods
 sub _events {
-   return $Events->{ $PID }->{ $_[ 1 ] } ||= {};
+   return $Cache->{ $PID }->{ $_[ 1 ] } ||= {};
 }
 
 sub _sigattaches {
-   return $Events->{ $PID }->{_sigattaches} ||= {};
+   return $Cache->{ $PID }->{_sigattaches} ||= {};
 }
 
 1;

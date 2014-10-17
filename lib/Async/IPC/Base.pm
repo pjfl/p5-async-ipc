@@ -4,18 +4,20 @@ use namespace::autoclean;
 
 use Moo;
 use Class::Usul::Constants qw( TRUE );
-use Class::Usul::Types     qw( Bool NonEmptySimpleStr Object
-                               NonZeroPositiveInt );
+use Class::Usul::Types     qw( BaseType Bool NonEmptySimpleStr
+                               NonZeroPositiveInt Object );
 
 has 'autostart'   => is => 'ro',   isa => Bool, default => TRUE;
 
-has 'builder'     => is => 'ro',   isa => Object,
-   handles        => [ qw( config debug file lock log loop run_cmd ) ],
+has 'builder'     => is => 'ro',   isa => BaseType,
+   handles        => [ qw( config debug lock log run_cmd ) ],
    required       => TRUE;
 
 has 'description' => is => 'ro',   isa => NonEmptySimpleStr, required => TRUE;
 
 has 'log_key'     => is => 'ro',   isa => NonEmptySimpleStr, required => TRUE;
+
+has 'loop'        => is => 'ro',   isa => Object,            required => TRUE;
 
 has 'pid'         => is => 'lazy', isa => NonZeroPositiveInt;
 

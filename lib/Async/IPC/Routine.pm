@@ -26,7 +26,7 @@ has 'is_running' => is => 'rwp',  isa => Bool,    default => TRUE;
 around 'BUILDARGS' => sub {
    my ($orig, $self, @args) = @_; my $args = $orig->( $self, @args ); my $attr;
 
-   for my $k ( qw( builder description log_key ) ) {
+   for my $k ( qw( builder description log_key loop ) ) {
       $attr->{ $k } = $args->{ $k };
    }
 

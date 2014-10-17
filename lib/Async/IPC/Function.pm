@@ -9,8 +9,8 @@ use Async::IPC::Functions  qw( log_leader read_exactly
 use Async::IPC::Process;
 use Class::Usul::Constants qw( FALSE OK TRUE );
 use Class::Usul::Functions qw( bson64id nonblocking_write_pipe_pair throw );
-use Class::Usul::Types     qw( ArrayRef Bool HashRef
-                               NonZeroPositiveInt PositiveInt SimpleStr );
+use Class::Usul::Types     qw( ArrayRef Bool HashRef NonZeroPositiveInt
+                               PositiveInt SimpleStr );
 use English                qw( -no_match_vars );
 use Storable               qw( thaw );
 use Try::Tiny;
@@ -37,7 +37,8 @@ around 'BUILDARGS' => sub {
    my ($orig, $self, @args) = @_; my $args = $orig->( $self, @args );
 
    my $attr = { builder     => $args->{builder},
-                description => $args->{description}, };
+                description => $args->{description},
+                loop        => $args->{loop} };
 
    for my $k ( qw( autostart channels log_key max_calls max_workers ) ) {
       my $v = delete $args->{ $k }; defined $v and $attr->{ $k } = $v;

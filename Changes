@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - Dropped file and loop from builder handles in Base
           - Imported code from App::MCP
 
 0.1.1     2014-10-16 12:59:44

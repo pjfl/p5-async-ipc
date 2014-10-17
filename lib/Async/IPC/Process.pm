@@ -96,7 +96,7 @@ sub stop {
 # Private methods
 sub _build_pid {
    my $self = shift; weaken( $self );
-   my $temp = $self->file->tempdir;
+   my $temp = $self->config->tempdir;
    my $args = { async => TRUE, ignore_zombies => FALSE };
    my $name = $self->config->pathname->basename.SPC.(lc $self->log_key);
    my $cmd  = (is_coderef $self->code)
