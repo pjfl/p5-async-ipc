@@ -2,7 +2,7 @@ package Async::IPC;
 
 use 5.010001;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 3 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 4 $ =~ /\d+/gmx );
 
 use Moo;
 use Async::IPC::Functions  qw( log_leader );
@@ -21,9 +21,9 @@ has 'loop'    => is => 'lazy', isa => Object,
 
 # Public methods
 sub new_notifier {
-   my ($self, %p) = @_; my $log = $self->log;
+   my ($self, %p) = @_;
 
-   my $ddesc = my $desc = delete $p{desc}; my $key = delete $p{key};
+   my $desc = delete $p{desc}; my $log = $self->log; my $key = delete $p{key};
 
    my $log_level = delete $p{log_level} || 'info'; my $type = delete $p{type};
 
@@ -41,8 +41,6 @@ sub new_notifier {
       return $_on_exit ? $_on_exit->( $pid, $rv ) : undef;
    };
 
-   if ($type eq 'function') { $desc .= ' worker'; $ddesc = $desc.' pool' }
-
    my $class = first_char $type eq '+' ? (substr $type, 1)
                                        : __PACKAGE__.'::'.(ucfirst $type);
 
@@ -54,8 +52,8 @@ sub new_notifier {
                                loop        => $self->loop,
                                on_exit     => $on_exit, %p, );
 
-   $logger->( $log_level, $notifier->pid, "Started ${ddesc}" );
-
+   $desc = $notifier->description;
+   $logger->( $log_level, $notifier->pid, "Started ${desc}" );
    return $notifier;
 }
 

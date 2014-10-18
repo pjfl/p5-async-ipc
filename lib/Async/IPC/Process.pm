@@ -88,7 +88,7 @@ sub stop {
 
    my $lead = log_leader 'debug', $self->log_key, $self->pid;
 
-   $self->log->debug( $lead.'Stopping '.$self->description );
+   $self->log->debug( "${lead}Stopping ".$self->description );
    CORE::kill 'TERM', $self->pid;
    return;
 }

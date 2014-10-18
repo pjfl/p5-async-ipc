@@ -34,16 +34,17 @@ has 'worker_objects' => is => 'ro',  isa => HashRef,  default => sub { {} };
 
 # Construction
 around 'BUILDARGS' => sub {
-   my ($orig, $self, @args) = @_; my $args = $orig->( $self, @args );
+   my ($orig, $self, @args) = @_; my $attr = {};
 
-   my $attr = { builder     => $args->{builder},
-                description => $args->{description},
-                loop        => $args->{loop} };
+   my $args = $orig->( $self, @args ); $args->{description} .= ' worker';
+
+   $attr->{ $_ } = $args->{ $_ } for ( qw(builder description loop ) );
 
    for my $k ( qw( autostart channels log_key max_calls max_workers ) ) {
       my $v = delete $args->{ $k }; defined $v and $attr->{ $k } = $v;
    }
 
+   $args->{log_key    } = delete $args->{worker_key} || 'WORKER';
    $attr->{worker_args} = $args;
    return $attr;
 };
@@ -76,7 +77,7 @@ sub stop {
 
    my $lead = log_leader 'debug', $self->log_key, $self->pid;
 
-   $self->log->debug( $lead.'Stopping '.$self->description.' pool' );
+   $self->log->debug( "${lead}Stopping ".$self->description.' pool' );
 
    my $workers = $self->worker_objects; my @pids = keys %{ $workers };
 
@@ -100,10 +101,9 @@ sub _new_worker {
       and $args->{call_pipe} = nonblocking_write_pipe_pair;
   ($self->channels =~ m{ o }mx or exists $args->{on_return})
       and $args->{retn_pipe} = nonblocking_write_pipe_pair;
-   $args->{code       } = __call_handler( $args );
-   $args->{description} = (lc $self->log_key)." worker ${index}";
-   $args->{log_key    } = 'WORKER';
-   $args->{on_exit    } = sub { delete $workers->{ $_[ 0 ] }; $on_exit->( @_ )};
+   $args->{code} = __call_handler( $args );
+   $args->{description} .= " ${index}";
+   $args->{on_exit} = sub { delete $workers->{ $_[ 0 ] }; $on_exit->( @_ )};
 
    my $worker = Async::IPC::Process->new( $args ); my $pid = $worker->pid;
 
