@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - Setting programe name uses relative path
           - Refactored Function log messages
           - Dropped file and loop from builder handles in Base
           - Imported code from App::MCP

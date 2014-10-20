@@ -98,7 +98,7 @@ sub _build_pid {
    my $self = shift; weaken( $self );
    my $temp = $self->config->tempdir;
    my $args = { async => TRUE, ignore_zombies => FALSE };
-   my $name = $self->config->pathname->basename.SPC.(lc $self->log_key);
+   my $name = $self->config->pathname->abs2rel.' - '.(lc $self->log_key);
    my $cmd  = (is_coderef $self->code)
             ? [ sub { $PROGRAM_NAME = $name; $self->code->( $self ) } ]
             : $self->code;
