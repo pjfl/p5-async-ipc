@@ -49,6 +49,20 @@ sub BUILD {
    return;
 }
 
+sub _build_pid {
+   my $self = shift; weaken( $self );
+   my $temp = $self->config->tempdir;
+   my $args = { async => TRUE, ignore_zombies => FALSE };
+   my $name = $self->config->pathname->abs2rel.' - '.(lc $self->log_key);
+   my $cmd  = (is_coderef $self->code)
+            ? [ sub { $PROGRAM_NAME = $name; $self->code->( $self ) } ]
+            : $self->code;
+
+   $self->debug and $args->{err} = $temp->catfile( (lc $self->log_key).'.err' );
+
+   return $self->run_cmd( $cmd, $args )->pid;
+}
+
 # Public methods
 sub is_running {
    return CORE::kill 0, $_[ 0 ]->pid;
@@ -59,11 +73,11 @@ sub send {
 }
 
 sub set_return_callback {
-   my ($self, $code) = @_; my $rdr = $self->reader or return;
+   my ($self, $code, $notifier) = @_; my $rdr = $self->reader or return;
 
    my $lead = log_leader 'error', 'EXECRV', my $pid = $self->pid;
 
-   my $log  = $self->log; my $loop = $self->loop;
+   my $log  = $self->log; my $loop = $notifier ? $notifier->loop : $self->loop;
 
    $loop->watch_read_handle( $rdr, sub {
       my $red = read_exactly $rdr, my $buf_len, 4;
@@ -93,21 +107,6 @@ sub stop {
    return;
 }
 
-# Private methods
-sub _build_pid {
-   my $self = shift; weaken( $self );
-   my $temp = $self->config->tempdir;
-   my $args = { async => TRUE, ignore_zombies => FALSE };
-   my $name = $self->config->pathname->abs2rel.' - '.(lc $self->log_key);
-   my $cmd  = (is_coderef $self->code)
-            ? [ sub { $PROGRAM_NAME = $name; $self->code->( $self ) } ]
-            : $self->code;
-
-   $self->debug and $args->{err} = $temp->catfile( (lc $self->log_key).'.err' );
-
-   return $self->run_cmd( $cmd, $args )->pid;
-}
-
 1;
 
 __END__
@@ -118,14 +117,23 @@ __END__
 
 =head1 Name
 
-Async::IPC::Process - One-line description of the modules purpose
+Async::IPC::Process - Execute a child process with input / output channels
 
 =head1 Synopsis
 
-   use Async::IPC::Process;
-   # Brief but working code examples
+   use Async::IPC;
+
+   my $factory = Async::IPC->new( builder => Class::Usul->new );
+
+   my $process = $factory->new_notifier
+      (  code => sub { ... code to run in a child process ... },
+         desc => 'description used by the logger',
+         key  => 'logger key used to identify a log entry',
+         type => 'process', );
 
 =head1 Description
+
+Execute a child process with input / output channels
 
 =head1 Configuration and Environment
 
@@ -133,17 +141,84 @@ Defines the following attributes;
 
 =over 3
 
+=item C<code>
+
+Required code reference / array reference / non empty simple string to execute
+in the child process
+
+=item C<max_calls>
+
+Positive integer defaults to zero. The maximum number of calls to execute
+before terminating. When zero do not terminate
+
+=item C<on_exit>
+
+The code reference to call when the process exits. The factory wraps this
+reference to log when it's called
+
+=item C<on_return>
+
+Invoke this callback subroutine when the code reference returns
+
+=item C<reader>
+
+File handle used by the parent process to read the result back from
+the child
+
+=item C<writer>
+
+File handle used by the parent to send call arguments to the child process
+
 =back
 
 =head1 Subroutines/Methods
 
+=head2 C<BUILDARGS>
+
+Selects the parents file handles for communication with the child process
+
+=head2 C<BUILD>
+
+Starts the child process, sets on exits and return callbacks
+
+=head2 C<is_running>
+
+   $bool = $process->is_running;
+
+Returns true if the child process is running
+
+=head2 C<send>
+
+   $bool = $process->send( @args );
+
+Returns true on success, false otherwise. Sends arguments to the child process
+
+=head2 C<set_return_callback>
+
+   $process->set_return_callback( $code, $notifier );
+
+Sets the return callback to the specified code reference. If C<$notifier>
+is specified use it's loop object as opposed to ours
+
+=head2 C<stop>
+
+   $process->stop;
+
+Stop the child process
+
 =head1 Diagnostics
+
+None
 
 =head1 Dependencies
 
 =over 3
 
 =item L<Class::Usul>
+
+=item L<Moo>
+
+=item L<Storable>
 
 =back
 

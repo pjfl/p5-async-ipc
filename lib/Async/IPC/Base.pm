@@ -7,19 +7,21 @@ use Class::Usul::Constants qw( TRUE );
 use Class::Usul::Types     qw( BaseType Bool NonEmptySimpleStr
                                NonZeroPositiveInt Object );
 
+# Public attributes
 has 'autostart'   => is => 'ro',   isa => Bool, default => TRUE;
-
-has 'builder'     => is => 'ro',   isa => BaseType,
-   handles        => [ qw( config debug lock log run_cmd ) ],
-   required       => TRUE;
 
 has 'description' => is => 'ro',   isa => NonEmptySimpleStr, required => TRUE;
 
 has 'log_key'     => is => 'ro',   isa => NonEmptySimpleStr, required => TRUE;
 
-has 'loop'        => is => 'ro',   isa => Object,            required => TRUE;
+has 'loop'        => is => 'rwp',  isa => Object,            required => TRUE;
 
 has 'pid'         => is => 'lazy', isa => NonZeroPositiveInt;
+
+# Private attributes
+has '_usul'       => is => 'ro',   isa => BaseType,
+   handles        => [ qw( config debug lock log run_cmd ) ],
+   init_arg       => 'builder', required => TRUE;
 
 1;
 
@@ -31,14 +33,17 @@ __END__
 
 =head1 Name
 
-Async::IPC::Base - One-line description of the modules purpose
+Async::IPC::Base - Attributes common to each of the notifier classes
 
 =head1 Synopsis
 
-   use Async::IPC::Base;
-   # Brief but working code examples
+   use Moo;
+
+   extends q(Async::IPC::Base);
 
 =head1 Description
+
+Base class for notifiers
 
 =head1 Configuration and Environment
 
@@ -46,17 +51,46 @@ Defines the following attributes;
 
 =over 3
 
+=item C<autostart>
+
+Read only boolean defaults to true. If false child process creation is delayed
+until first use
+
+=item C<description>
+
+A required, immutable, non empty simple string. The description used by the
+logger
+
+=item C<log_key>
+
+A required, immutable, non empty simple string. Logger key used to identify a
+log entry
+
+=item C<loop>
+
+An instance of L<Async::IPC::Loop>
+
+=item C<pid>
+
+A non zero positive integer. The process id of this notifier
+
 =back
 
 =head1 Subroutines/Methods
 
+None
+
 =head1 Diagnostics
+
+None
 
 =head1 Dependencies
 
 =over 3
 
 =item L<Class::Usul>
+
+=item L<Moo>
 
 =back
 

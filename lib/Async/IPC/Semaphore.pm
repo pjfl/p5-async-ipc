@@ -20,6 +20,7 @@ around 'BUILDARGS' => sub {
    return $orig->( $self, $attr );
 };
 
+# Public methods
 sub raise {
    my $self = shift; $self->is_running or return FALSE; my $key = refaddr $self;
 
@@ -38,32 +39,52 @@ __END__
 
 =head1 Name
 
-Async::IPC::Semaphore - One-line description of the modules purpose
+Async::IPC::Semaphore - Sub class of Routine with semaphore semantics
 
 =head1 Synopsis
 
-   use Async::IPC::Semaphore;
-   # Brief but working code examples
+   use Async::IPC;
+
+   my $factory = Async::IPC->new( builder => Class::Usul->new );
+
+   my $semaphore = $factory->new_notifier
+      (  code => sub { ... code to run in a child process ... },
+         desc => 'description used by the logger',
+         key  => 'logger key used to identify a log entry',
+         type => 'semaphore' );
+
+   my $result = $semaphore->call( @args );
 
 =head1 Description
 
+Sub class of L<Async::IPC::Routine> with semaphore semantics
+
 =head1 Configuration and Environment
 
-Defines the following attributes;
-
-=over 3
-
-=back
+Defines no attributes
 
 =head1 Subroutines/Methods
 
+=head2 C<BUILDARGS>
+
+Wraps the code reference. When called it will reset the lock set by the
+L</raise> call
+
+=head2 C<raise>
+
+Call the child process, setting a semaphore
+
 =head1 Diagnostics
+
+None
 
 =head1 Dependencies
 
 =over 3
 
 =item L<Class::Usul>
+
+=item L<Moo>
 
 =back
 

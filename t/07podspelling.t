@@ -41,4 +41,8 @@ __DATA__
 peter
 flanigan
 Async::IPC
+asyncronous
+autostart
+incrementing
 merchantability
+stateful

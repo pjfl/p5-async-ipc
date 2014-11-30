@@ -2,7 +2,7 @@ package Async::IPC;
 
 use 5.010001;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 5 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 6 $ =~ /\d+/gmx );
 
 use Moo;
 use Async::IPC::Functions  qw( log_leader );
@@ -13,11 +13,12 @@ use Class::Usul::Types     qw( BaseType Object );
 use POSIX                  qw( WEXITSTATUS );
 
 # Public attributes
-has 'builder' => is => 'ro',   isa => BaseType, handles => [ 'log' ],
-   required   => TRUE;
+has 'loop'  => is => 'lazy', isa => Object,
+   builder  => sub { Async::IPC::Loop->new };
 
-has 'loop'    => is => 'lazy', isa => Object,
-   builder    => sub { Async::IPC::Loop->new };
+# Private attributes
+has '_usul' => is => 'ro',   isa => BaseType, handles => [ 'log' ],
+   init_arg => 'builder', required => TRUE;
 
 # Public methods
 sub new_notifier {
@@ -46,7 +47,7 @@ sub new_notifier {
 
    ensure_class_loaded $class;
 
-   my $notifier = $class->new( builder     => $self->builder,
+   my $notifier = $class->new( builder     => $self->_usul,
                                description => $desc,
                                log_key     => $key,
                                loop        => $self->loop,
@@ -67,14 +68,28 @@ __END__
 
 =head1 Name
 
-Async::IPC - One-line description of the modules purpose
+Async::IPC - Asyncronous inter process communication
 
 =head1 Synopsis
 
    use Async::IPC;
-   # Brief but working code examples
+
+   my $factory = Async::IPC->new( builder => Class::Usul->new );
+
+   my $notifier = $factory->new_notifier
+      (  code => sub { ... code to run in a child process ... },
+         desc => 'description used by the logger',
+         key  => 'logger key used to identify a log entry',
+         type => 'routine' );
 
 =head1 Description
+
+A callback style API implemented on L<AnyEvent>
+
+I couldn't make L<IO::Async> work with L<AnyEvent> and L<EV> so this instead
+
+This module implements a factory pattern. It creates instances of the
+notifier classes
 
 =head1 Configuration and Environment
 
@@ -82,17 +97,60 @@ Defines the following attributes;
 
 =over 3
 
+=item C<builder>
+
+A required instance of L<Class::Usul>
+
+=item C<loop>
+
+An instance of L<Async::IPC::Loop>. Created by the constructor
+
 =back
 
 =head1 Subroutines/Methods
 
+=head2 C<new_notifier>
+
+Returns an object reference for a newly instantiated instance of a notifier
+class. The notifier types and their classes are;
+
+=over 3
+
+=item C<function>
+
+An instance of L<Async::IPC::Function>
+
+=item C<periodical>
+
+An instance of L<Async::IPC::Periodical>
+
+=item C<process>
+
+An instance of L<Async::IPC::Process>
+
+=item C<routine>
+
+An instance of L<Async::IPC::Routine>
+
+=item C<semaphore>
+
+An instance of L<Async::IPC::Semaphore>
+
+=back
+
 =head1 Diagnostics
+
+None
 
 =head1 Dependencies
 
 =over 3
 
 =item L<Class::Usul>
+
+=item L<Moo>
+
+=item L<POSIX>
 
 =back
 

@@ -11,6 +11,15 @@ use Scalar::Util           qw( blessed );
 
 my $Cache = {};
 
+# Private methods
+my $_events = sub {
+   return $Cache->{ $PID }->{ $_[ 1 ] } ||= {};
+};
+
+my $_sigattaches = sub {
+   return $Cache->{ $PID }->{_sigattaches} ||= {};
+};
+
 # Construction
 sub new {
    my $self = shift; return bless arg_list( @_ ), blessed $self || $self;
@@ -35,7 +44,7 @@ sub stop {
 }
 
 sub watch_child {
-   my ($self, $id, $cb) = @_; my $w = $self->_events( 'watchers' );
+   my ($self, $id, $cb) = @_; my $w = $self->$_events( 'watchers' );
 
    if ($id) {
       my $cv = $w->{ $id }->[ 0 ] = AnyEvent->condvar;
@@ -54,34 +63,34 @@ sub watch_child {
 }
 
 sub unwatch_child {
-   my $w = $_[ 0 ]->_events( 'watchers' ); my $id = $_[ 1 ];
+   my $w = $_[ 0 ]->$_events( 'watchers' ); my $id = $_[ 1 ];
 
    undef $w->{ $id }->[ 0 ]; undef $w->{ $id }->[ 1 ]; delete $w->{ $id };
    return;
 }
 
 sub watch_read_handle {
-   my ($self, $fh, $cb) = @_; my $h = $self->_events( 'handles' );
+   my ($self, $fh, $cb) = @_; my $h = $self->$_events( 'handles' );
 
    $h->{ "r${fh}" } = AnyEvent->io( cb => $cb, fh => $fh, poll => 'r' );
    return;
 }
 
 sub unwatch_read_handle {
-   delete $_[ 0 ]->_events( 'handles' )->{ 'r'.$_[ 1 ] }; return;
+   delete $_[ 0 ]->$_events( 'handles' )->{ 'r'.$_[ 1 ] }; return;
 }
 
 sub watch_signal {
    my ($self, $signal, $cb) = @_; my $attaches;
 
-   unless ($attaches = $self->_sigattaches->{ $signal }) {
-      my $s = $self->_events( 'signals' ); my @attaches;
+   unless ($attaches = $self->$_sigattaches->{ $signal }) {
+      my $s = $self->$_events( 'signals' ); my @attaches;
 
       $s->{ $signal } = AnyEvent->signal( signal => $signal, cb => sub {
          for my $attachment (@attaches) { $attachment->() }
       } );
 
-      $attaches = $self->_sigattaches->{ $signal } = \@attaches;
+      $attaches = $self->$_sigattaches->{ $signal } = \@attaches;
    }
 
    push @{ $attaches }, $cb; return \$attaches->[ -1 ];
@@ -91,7 +100,7 @@ sub unwatch_signal {
    my ($self, $signal, $id) = @_;
 
    # Can't use grep because we have to preserve the addresses
-   my $attaches = $self->_sigattaches->{ $signal } or return;
+   my $attaches = $self->$_sigattaches->{ $signal } or return;
 
    for (my $i = 0; $i < @{ $attaches }; ) {
       not $id and splice @{ $attaches }, $i, 1, () and next;
@@ -100,8 +109,8 @@ sub unwatch_signal {
    }
 
    scalar @{ $attaches } and return;
-   delete $self->_sigattaches->{ $signal };
-   delete $self->_events( 'signals' )->{ $signal };
+   delete $self->$_sigattaches->{ $signal };
+   delete $self->$_events( 'signals' )->{ $signal };
    return;
 }
 
@@ -117,14 +126,14 @@ sub watch_time {
    not defined $interval and push @args, 'interval', $after;
        defined $interval and $interval and push @args, 'interval', $interval;
 
-   my $t = $self->_events( 'timers' ); $t->{ $id }->[ 0 ] = $cb;
+   my $t = $self->$_events( 'timers' ); $t->{ $id }->[ 0 ] = $cb;
 
    $t->{ $id }->[ 1 ] = AnyEvent->timer( @args );
    return;
 }
 
 sub unwatch_time {
-   my $t = $_[ 0 ]->_events( 'timers' ); my $id = $_[ 1 ];
+   my $t = $_[ 0 ]->$_events( 'timers' ); my $id = $_[ 1 ];
 
    exists $t->{ $id } or return 0; my $cb = $t->{ $id }->[ 0 ];
 
@@ -134,27 +143,18 @@ sub unwatch_time {
 }
 
 sub watch_write_handle {
-   my ($self, $fh, $cb) = @_; my $h = $self->_events( 'handles' );
+   my ($self, $fh, $cb) = @_; my $h = $self->$_events( 'handles' );
 
    $h->{ "w${fh}" } = AnyEvent->io( cb => $cb, fh => $fh, poll => 'w' );
    return;
 }
 
 sub unwatch_write_handle {
-   delete $_[ 0 ]->_events( 'handles' )->{ 'w'.$_[ 1 ] }; return;
+   delete $_[ 0 ]->$_events( 'handles' )->{ 'w'.$_[ 1 ] }; return;
 }
 
 sub uuid {
    state $uuid //= 1; return $uuid++;
-}
-
-# Private methods
-sub _events {
-   return $Cache->{ $PID }->{ $_[ 1 ] } ||= {};
-}
-
-sub _sigattaches {
-   return $Cache->{ $PID }->{_sigattaches} ||= {};
 }
 
 1;
@@ -167,30 +167,148 @@ __END__
 
 =head1 Name
 
-Async::IPC::Loop - One-line description of the modules purpose
+Async::IPC::Loop - Callback style API for AnyEvent
 
 =head1 Synopsis
 
    use Async::IPC::Loop;
-   # Brief but working code examples
+
+   my $loop = Async::IPC::Loop->new;
+
+   # Call the subroutine when the child process exits
+   $loop->watch_child( $process_id, sub { ... } );
+
+   # Set a handler to watch for the terminate signal
+   $loop->watch_signal( TERM => sub { $loop->stop } );
+
+   # Enter into the event loop. Wait for the event loop to terminate
+   $loop->start;
+
+   # Wait for all child processes to exit
+   $loop->watch_child( 0 );
 
 =head1 Description
 
+Uses L<AnyEvent> and L<EV> to implement a callback style asyncronous API
+
 =head1 Configuration and Environment
 
-Defines the following attributes;
-
-=over 3
-
-=back
+Defines no attributes
 
 =head1 Subroutines/Methods
 
+=head2 C<new>
+
+   $loop = Async::IPC::Loop->new;
+
+Constructor
+
+=head2 C<start>
+
+   $loop->start;
+
+Enter into the event loop. Wait here, processing events until the event loop
+is terminated
+
+=head2 C<start_nb>
+
+   $loop->start_nb;
+
+Same a L</start> but returns immediately
+
+=head2 C<stop>
+
+   $loop->stop;
+
+Terminate the event loop. When this is called the L</start> method returns
+
+=head2 C<watch_child>
+
+   $loop->watch_child( $process_id, $callback_sub );
+
+If the process id is greater than zero, the callback subroutine is invoked
+when the process exits.
+
+If the process id is zero and there is no callback subroutine, wait for all
+child processes to exit. If the callback subroutine is supplied then, when
+called, it should return the list of process ids to wait for
+
+=head2 C<unwatch_child>
+
+   $loop->unwatch_child( $process_id );
+
+Delete the child watcher for the specified process
+
+=head2 C<watch_read_handle>
+
+   $loop->watch_read_handle( $file_handle, $callback_sub );
+
+The callback subroutine is invoked when the file handle becomes readable
+
+=head2 C<unwatch_read_handle>
+
+   $loop->unwatch_read_handle( $file_handle );
+
+Delete the file handle watcher for the specified file handle
+
+=head2 C<watch_signal>
+
+   $attach_id = $loop->watch_signal( $signal_name, $callback_sub );
+
+The callback subroutine is invoked when the process receives the named
+signal. The returned id uniquely identifies the watcher and can be passed
+to L</unwatch_signal>
+
+=head2 C<unwatch_signal>
+
+   $loop->unwatch_signal( $signal_name, $attach_id );
+
+Remove the specified attachment from the list of callbacks watching the named
+signal. If no attachment id is passed all callbacks are removed
+
+=head2 C<watch_time>
+
+   $loop->watch_time( $id, $callback_sub, $delay, $interval );
+
+Invoke the callback subroutine after C<$delay> seconds. Repeat at C<$interval>
+seconds. If the C<$interval> argument is either C<abs> or C<rel> then invoke
+the callback only once. Requires a unique identifier
+
+=head2 C<unwatch_time>
+
+   $callback_sub = $loop->unwatch_time( $id );
+
+Cancel the callback associated with the unique id
+
+=head2 C<watch_write_handle>
+
+   $loop->watch_write_handle( $file_handle, $callback_sub );
+
+The callback subroutine is invoked when the file handle becomes writable
+
+=head2 C<unwatch_write_handle>
+
+   $loop->unwatch_write_handle( $file_handle );
+
+Delete the file handle watcher for the specified file handle
+
+=head2 C<uuid>
+
+   $unique_integer = $loop->uuid;
+
+Stateful counter. Returns a continuously incrementing integer
+
 =head1 Diagnostics
+
+None
 
 =head1 Dependencies
 
 =over 3
+
+=item L<AnyEvent>
+
+=item L<Async::Interrupt>
 
 =item L<Class::Usul>
 
