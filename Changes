@@ -1,5 +1,7 @@
 Revision history for Async::IPC
 
+          - Must be sysread not read on Functions::read_exactly
+          - Added tests
           - Added POD
           - Setting programe name uses relative path
           - Refactored Function log messages

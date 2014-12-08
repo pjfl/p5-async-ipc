@@ -55,7 +55,7 @@ my $_call_handler = sub {
          }
          catch { $log->error( $lead.$_ ) };
 
-         $max_calls and ++$count > $max_calls and terminate $loop;
+         $max_calls and ++$count >= $max_calls and terminate $loop;
          return;
       } );
 

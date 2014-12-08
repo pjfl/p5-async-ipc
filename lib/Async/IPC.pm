@@ -2,7 +2,7 @@ package Async::IPC;
 
 use 5.010001;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 6 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 7 $ =~ /\d+/gmx );
 
 use Moo;
 use Async::IPC::Functions  qw( log_leader );
@@ -156,7 +156,8 @@ None
 
 =head1 Incompatibilities
 
-There are no known incompatibilities in this module
+This module revolves around forking processes. Unless it developed a thread
+model it won't work on mswin32
 
 =head1 Bugs and Limitations
 

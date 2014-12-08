@@ -46,8 +46,8 @@ sub log_leader ($$;$) {
 sub read_exactly ($$$) {
    $_[ 1 ] = NUL;
 
-   while ((my $have = length $_[ 1 ]) < $_[ 2 ]) {
-      my $red = read( $_[ 0 ], $_[ 1 ], $_[ 2 ] - $have, $have );
+   while ((my $have = length $_[ 1 ]) < $_[ 2 ]) { # Must be sysread NOT read
+      my $red = sysread( $_[ 0 ], $_[ 1 ], $_[ 2 ] - $have, $have );
 
       defined $red or return; $red or return NUL;
    }

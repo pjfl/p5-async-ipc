@@ -44,14 +44,12 @@ my $_call_handler = sub {
       my $lead = log_leader 'error', 'EXCODE', $PID;
       my $log  = $self->log; my $max = $self->max_calls; my $count = 0;
 
-      while (TRUE) {
-         $max and ++$count > $max and last;
-
+      while (not $max or $count++ < $max) {
          my $red = read_exactly $rdr, my $buf_len, 4; # Block here
 
-         recv_arg_error $log, $PID, $red and last;
+         recv_arg_error $log, $PID, $red and return;
          $red = read_exactly $rdr, my $buf, unpack 'I', $buf_len;
-         recv_arg_error $log, $PID, $red and last;
+         recv_arg_error $log, $PID, $red and return;
 
          try {
             my $param = $buf ? thaw $buf : [ $PID, {} ];
@@ -109,9 +107,11 @@ around 'BUILDARGS' => sub {
 
    my $args = $orig->( $self, @args ); $args->{description} .= ' worker';
 
-   $attr->{ $_ } = $args->{ $_ } for ( qw(builder description loop ) );
+   for my $k ( qw( builder description loop max_calls ) ) {
+      defined $args->{ $k } and $attr->{ $k } = $args->{ $k };
+   }
 
-   for my $k ( qw( autostart channels log_key max_calls max_workers ) ) {
+   for my $k ( qw( autostart channels log_key max_workers ) ) {
       my $v = delete $args->{ $k }; defined $v and $attr->{ $k } = $v;
    }
 
