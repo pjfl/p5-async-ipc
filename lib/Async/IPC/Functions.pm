@@ -4,7 +4,7 @@ use strictures;
 use parent 'Exporter::Tiny';
 
 use Class::Usul::Constants qw( FAILED FALSE LANG NUL OK SPC TRUE );
-use Class::Usul::Functions qw( pad split_on__ throw );
+use Class::Usul::Functions qw( pad );
 use English                qw( -no_match_vars );
 use Storable               qw( nfreeze );
 

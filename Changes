@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - Passing tests
           - Must be sysread not read on Functions::read_exactly
           - Added tests
           - Added POD

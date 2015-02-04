@@ -35,7 +35,7 @@ has 'worker_objects' => is => 'ro',  isa => HashRef,  default => sub { {} };
 # Private functions
 my $_call_handler = sub {
    my $args = shift;
-   my $code = delete $args->{code};
+   my $code = $args->{code};
    my $rdr  = $args->{call_pipe} ? $args->{call_pipe}->[ 0 ] : FALSE;
    my $wtr  = $args->{retn_pipe} ? $args->{retn_pipe}->[ 1 ] : FALSE;
 
@@ -68,7 +68,7 @@ my $_call_handler = sub {
 my $_new_worker = sub {
    my ($self, $index) = @_; my $args = { %{ $self->worker_args } };
 
-   my $on_exit = delete $args->{on_exit}; my $workers = $self->worker_objects;
+   my $on_exit = $args->{on_exit}; my $workers = $self->worker_objects;
 
    $self->channels =~ m{ i }mx
       and $args->{call_pipe} = nonblocking_write_pipe_pair;

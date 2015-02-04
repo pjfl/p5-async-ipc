@@ -42,9 +42,9 @@ sub _build_pid {
 sub once {
    my $self = shift; weaken( $self ); my $cb = sub { $self->code->( $self ) };
 
-   my $flag = $self->time_spec or return $self->$_time_spec_error;
+   my $time_spec = $self->time_spec or return $self->$_time_spec_error;
 
-   $self->loop->watch_time( $self->pid, $cb, $self->interval, $flag );
+   $self->loop->watch_time( $self->pid, $cb, $self->interval, $time_spec );
    return;
 }
 
