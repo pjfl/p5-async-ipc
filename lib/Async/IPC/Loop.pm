@@ -26,6 +26,14 @@ sub new {
 }
 
 # Public methods
+sub once {
+   my ($self, $tmout, $cb) = @_;
+
+   defined $tmout and my $w = AnyEvent->timer( after => $tmout, cb => $cb );
+   AnyEvent->_poll; # Undocumented method
+   return;
+}
+
 sub start {
    my $self = shift; (local $self->{cv} = AnyEvent->condvar)->recv; return;
 }
@@ -67,6 +75,18 @@ sub unwatch_child {
 
    undef $w->{ $id }->[ 0 ]; undef $w->{ $id }->[ 1 ]; delete $w->{ $id };
    return;
+}
+
+sub watch_idle {
+   my ($self, $id, $cb) = @_; my $w = $self->$_events( 'idle' );
+
+   $w->{ $id } = AnyEvent->idle( cb => sub {
+      delete $w->{ $id }; $cb->( @_ ) } );
+   return;
+}
+
+sub unwatch_idle {
+   delete $_[ 0 ]->$_events( 'idle' )->{ $_[ 1 ] }; return;
 }
 
 sub watch_read_handle {
@@ -203,6 +223,13 @@ Defines no attributes
 
 Constructor
 
+=head2 C<once>
+
+   $loop->once( $timeout, $callback_sub );
+
+Process events once and then return. The optional time out and callback
+subroutine is used to terminate the waiting for events after a given time
+
 =head2 C<start>
 
    $loop->start;
@@ -238,6 +265,18 @@ called, it should return the list of process ids to wait for
    $loop->unwatch_child( $process_id );
 
 Delete the child watcher for the specified process
+
+=head2 C<watch_idle>
+
+   $loop->watch_idle( $id, $callback_sub );
+
+Executes the callback after any pending events have been processed
+
+=head2 C<unwatch_idle>
+
+   $loop->unwatch_idle( $id );
+
+Delete the idle watcher for the specified id
 
 =head2 C<watch_read_handle>
 

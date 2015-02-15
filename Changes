@@ -1,5 +1,7 @@
 Revision history for Async::IPC
 
+          - Added File watcher
+          - Added loop once and idle watcher
           - Passing tests
           - Must be sysread not read on Functions::read_exactly
           - Added tests
