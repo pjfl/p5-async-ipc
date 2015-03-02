@@ -8,7 +8,7 @@ use Async::IPC::Functions  qw( log_leader read_exactly
                                recv_arg_error send_msg );
 use Async::IPC::Process;
 use Class::Usul::Constants qw( FALSE OK TRUE );
-use Class::Usul::Functions qw( bson64id nonblocking_write_pipe_pair throw );
+use Class::Usul::Functions qw( bson64id nonblocking_write_pipe_pair );
 use Class::Usul::Types     qw( ArrayRef Bool HashRef NonZeroPositiveInt
                                PositiveInt SimpleStr );
 use English                qw( -no_match_vars );
@@ -148,7 +148,9 @@ sub set_return_callback {
 }
 
 sub stop {
-   my $self = shift; $self->_set_is_running( FALSE );
+   my $self = shift;
+
+   $self->is_running or return; $self->_set_is_running( FALSE );
 
    my $lead = log_leader 'debug', $self->log_key, $self->pid;
 
@@ -158,8 +160,7 @@ sub stop {
 
    $workers->{ $_ }->stop for (@pids);
 
-   $self->loop->watch_child( 0, sub { @pids } );
-   return;
+   $self->loop->watch_child( 0, sub { @pids } ); return;
 }
 
 1;

@@ -5,7 +5,7 @@ use namespace::autoclean;
 use Moo;
 use Async::IPC::Functions  qw( log_leader read_exactly recv_rv_error send_msg );
 use Class::Usul::Constants qw( FALSE SPC TRUE );
-use Class::Usul::Functions qw( is_coderef throw );
+use Class::Usul::Functions qw( is_coderef );
 use Class::Usul::Types     qw( ArrayRef CodeRef FileHandle
                                NonEmptySimpleStr PositiveInt Undef );
 use English                qw( -no_match_vars );
@@ -51,12 +51,13 @@ sub BUILD {
 
 sub _build_pid {
    my $self = shift; weaken( $self );
+   my $code = $self->code;
    my $temp = $self->config->tempdir;
    my $args = { async => TRUE, ignore_zombies => FALSE };
    my $name = $self->config->pathname->abs2rel.' - '.(lc $self->log_key);
-   my $cmd  = (is_coderef $self->code)
-            ? [ sub { $PROGRAM_NAME = $name; $self->code->( $self ) } ]
-            : $self->code;
+   my $cmd  = (is_coderef $code)
+            ? [ sub { $PROGRAM_NAME = $name; $code->( $self ) } ]
+            : $code;
 
    $self->debug and $args->{err} = $temp->catfile( (lc $self->log_key).'.err' );
 
@@ -73,11 +74,11 @@ sub send {
 }
 
 sub set_return_callback {
-   my ($self, $code, $notifier) = @_; my $rdr = $self->reader or return;
+   my ($self, $code, $loop) = @_; my $rdr = $self->reader or return;
 
    my $lead = log_leader 'error', 'EXECRV', my $pid = $self->pid;
 
-   my $log  = $self->log; my $loop = $notifier ? $notifier->loop : $self->loop;
+   my $log  = $self->log; $loop //= $self->loop;
 
    $loop->watch_read_handle( $rdr, sub {
       my $red = read_exactly $rdr, my $buf_len, 4;
@@ -195,10 +196,10 @@ Returns true on success, false otherwise. Sends arguments to the child process
 
 =head2 C<set_return_callback>
 
-   $process->set_return_callback( $code, $notifier );
+   $process->set_return_callback( $code, $loop );
 
-Sets the return callback to the specified code reference. If C<$notifier>
-is specified use it's loop object as opposed to ours
+Sets the return callback to the specified code reference. If C<$loop>
+is specified use that loop object as opposed to ours
 
 =head2 C<stop>
 

@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - Added Handle, Stream, and Channel
           - Added File watcher
           - Added loop once and idle watcher
           - Passing tests

@@ -98,7 +98,7 @@ sub call {
 sub stop {
    my $self = shift;
 
-   $self->is_running or return FALSE; $self->_set_is_running( FALSE );
+   $self->is_running or return; $self->_set_is_running( FALSE );
 
    my $pid  = $self->child->pid; $self->child->stop;
 

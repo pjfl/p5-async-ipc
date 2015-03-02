@@ -96,6 +96,12 @@ sub watch_read_handle {
    return;
 }
 
+sub watching_read_handle {
+   my ($self, $fh) = @_; my $h = $self->$_events( 'handles' );
+
+   return ((exists $h->{ "r${fh}" }) && (defined $h->{ "r${fh}" })) ? 1 : 0;
+}
+
 sub unwatch_read_handle {
    delete $_[ 0 ]->$_events( 'handles' )->{ 'r'.$_[ 1 ] }; return;
 }
@@ -167,6 +173,12 @@ sub watch_write_handle {
 
    $h->{ "w${fh}" } = AnyEvent->io( cb => $cb, fh => $fh, poll => 'w' );
    return;
+}
+
+sub watching_write_handle {
+   my ($self, $fh) = @_; my $h = $self->$_events( 'handles' );
+
+   return ((exists $h->{ "w${fh}" }) && (defined $h->{ "w${fh}" })) ? 1 : 0;
 }
 
 sub unwatch_write_handle {
@@ -284,6 +296,12 @@ Delete the idle watcher for the specified id
 
 The callback subroutine is invoked when the file handle becomes readable
 
+=head2 C<watching_read_handle>
+
+   $bool = $self->watching_read_handle( $file_handle );
+
+Returns true if the file handle is being watched for reading, false otherwise
+
 =head2 C<unwatch_read_handle>
 
    $loop->unwatch_read_handle( $file_handle );
@@ -324,6 +342,12 @@ Cancel the callback associated with the unique id
    $loop->watch_write_handle( $file_handle, $callback_sub );
 
 The callback subroutine is invoked when the file handle becomes writable
+
+=head2 C<watching_write_handle>
+
+   $bool = $self->watching_write_handle( $file_handle );
+
+Returns true if the file handle is being watched for writing, false otherwise
 
 =head2 C<unwatch_write_handle>
 

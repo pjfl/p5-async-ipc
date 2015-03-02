@@ -4,26 +4,23 @@ use namespace::autoclean;
 
 use Moo;
 use Async::IPC::Functions  qw( log_leader );
-use Class::Usul::Constants qw( TRUE );
-use Class::Usul::Types     qw( CodeRef NonZeroPositiveInt SimpleStr Undef );
+use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE TRUE );
+use Class::Usul::Functions qw( throw );
+use Class::Usul::Types     qw( Bool CodeRef NonZeroPositiveInt
+                               SimpleStr Undef );
 use Scalar::Util           qw( weaken );
+use Unexpected::Functions  qw( Unspecified );
 
 extends q(Async::IPC::Base);
 
 # Public attributes
-has 'code'      => is => 'ro', isa => CodeRef, required => TRUE;
+has 'code'       => is => 'ro',  isa => CodeRef, required => TRUE;
 
-has 'interval'  => is => 'ro', isa => NonZeroPositiveInt, default => 1;
+has 'interval'   => is => 'ro',  isa => NonZeroPositiveInt, default => 1;
 
-has 'time_spec' => is => 'ro', isa => SimpleStr | Undef;
+has 'is_running' => is => 'rwp', isa => Bool, default => FALSE;
 
-# Private methdods
-my $_time_spec_error = sub {
-   my $self = shift; my $lead = log_leader 'error', $self->log_key, $self->pid;
-
-   $self->log->error( "${lead}Flag time_spec must be set" );
-   return;
-};
+has 'time_spec'  => is => 'ro',  isa => SimpleStr | Undef;
 
 # Construction
 sub BUILD {
@@ -34,17 +31,27 @@ sub BUILD {
    return;
 }
 
+sub DEMOLISH {
+   $_[ 0 ]->stop; return;
+}
+
 sub _build_pid {
    return $_[ 0 ]->loop->uuid;
 }
 
 # Public methods
 sub once {
-   my $self = shift; weaken( $self ); my $cb = sub { $self->code->( $self ) };
+   my $self = shift; my $code = $self->code;
 
-   my $time_spec = $self->time_spec or return $self->$_time_spec_error;
+   $self->is_running and throw 'Process [_1] already running', [ $self->pid ];
+
+   my $time_spec = $self->time_spec or throw Unspecified, [ 'time_spec' ];
+
+   weaken( $self ); my $cb = sub {
+      $code->( $self ); $self->_set_is_running( FALSE ); };
 
    $self->loop->watch_time( $self->pid, $cb, $self->interval, $time_spec );
+   $self->_set_is_running( TRUE );
    return;
 }
 
@@ -57,14 +64,23 @@ sub restart {
 }
 
 sub start {
-   my $self = shift; weaken( $self ); my $cb = sub { $self->code->( $self ) };
+   my $self = shift; my $code = $self->code;
+
+   $self->is_running and throw 'Process [_1] already running', [ $self->pid ];
+
+   weaken( $self ); my $cb = sub { $code->( $self ) };
 
    $self->loop->watch_time( $self->pid, $cb, $self->interval );
+   $self->_set_is_running( TRUE );
    return;
 }
 
 sub stop {
-   my $self = shift; my $lead = log_leader 'debug', $self->log_key, $self->pid;
+   my $self = shift;
+
+   $self->is_running or return FALSE; $self->_set_is_running( FALSE );
+
+   my $lead = log_leader 'debug', $self->log_key, $self->pid;
 
    $self->log->debug( "${lead}Stopping ".$self->description );
    $self->loop->unwatch_time( $self->pid );
@@ -117,6 +133,11 @@ A required code reference. The callback subroutine to invoke at intervals
 A non zero positive integer that defaults to one. Time in seconds between
 invocations of the code reference
 
+=item C<is_running>
+
+A boolean that default to false. Is set to true when the notifier starts.
+Gets set to false by calling the C<stop> method
+
 =item C<time_spec>
 
 A simple string or undefined. If specified can be either the flag values C<abs>
@@ -131,6 +152,11 @@ specification
 
 It L<autostart|Async::IPC::Base/autostart> is true calls L</once> if
 C<time_spec> is set, calls L</start> otherwise
+
+=head2 C<DEMOLISH>
+
+Stops the notifier when the object reference goes out of scope and is
+destroyed
 
 =head2 C<once>
 

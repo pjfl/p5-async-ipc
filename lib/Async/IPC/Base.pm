@@ -3,9 +3,12 @@ package Async::IPC::Base;
 use namespace::autoclean;
 
 use Moo;
-use Class::Usul::Constants qw( TRUE );
+use Async::IPC::Functions  qw( log_leader );
+use Class::Usul::Constants qw( FALSE TRUE );
+use Class::Usul::Functions qw( is_coderef throw );
 use Class::Usul::Types     qw( BaseType Bool NonEmptySimpleStr
                                NonZeroPositiveInt Object );
+use Scalar::Util           qw( blessed weaken );
 
 # Public attributes
 has 'autostart'   => is => 'ro',   isa => Bool, default => TRUE;
@@ -20,8 +23,53 @@ has 'pid'         => is => 'lazy', isa => NonZeroPositiveInt;
 
 # Private attributes
 has '_usul'       => is => 'ro',   isa => BaseType,
-   handles        => [ qw( config debug lock log run_cmd ) ],
+   handles        => [ qw( config debug encoding lock log run_cmd ) ],
    init_arg       => 'builder', required => TRUE;
+
+sub can_event {
+   my ($self, $ev_name) = @_;
+
+   return ($self->can( $ev_name ) && $self->$ev_name);
+}
+
+sub capture_weakself {
+   my ($self, $code) = @_;
+
+   is_coderef $code or $self->can( $code ) or throw
+      'Package [_1] cannot locate method [_2]', [ blessed $self, $code ];
+
+   weaken $self;
+
+   return sub {
+      my $cb = (is_coderef $code) ? $code : $self->$code;
+
+      unshift @_, $self; goto &$cb;
+   };
+}
+
+sub invoke_event {
+   my ($self, $ev_name, @args) = @_;
+
+   my $code = $self->can_event( $ev_name )
+      or throw 'Event [_1] unknown', [ $ev_name ];
+
+   my $lead = log_leader 'debug', $self->log_key, $self->pid;
+
+   $self->log->debug( "${lead}Invoke event ${ev_name}" );
+
+   return [ $code->( $self, @args ) ];
+}
+
+sub maybe_invoke_event {
+   my ($self, $ev_name, @args) = @_;
+
+   my $code = $self->can_event( $ev_name ) or return FALSE;
+   my $lead = log_leader 'debug', $self->log_key, $self->pid;
+
+   $self->log->debug( "${lead}Invoke event ${ev_name}" );
+
+   return [ $code->( $self, @args ) ];
+}
 
 1;
 
@@ -78,7 +126,27 @@ A non zero positive integer. The process id of this notifier
 
 =head1 Subroutines/Methods
 
-None
+=head2 C<can_event>
+
+   $code_ref = $self->can_event( $event_name );
+
+Returns the code reference of then handler if this object can handle the named
+event, otherwise returns false
+
+=head2 C<invoke_event>
+
+   $result_array_ref = $self->invoke_event( 'event_name', @args );
+
+=head2 C<maybe_invoke_event>
+
+   $result_array_ref = $self->maybe_invoke_event( 'event_name', @args );
+
+=head2 C<capture_weakself>
+
+   $code_ref = $self->capture_weakself( $code_ref );
+
+Returns a code reference which when called passes a weakened copy of C<$self>
+to the supplied code reference
 
 =head1 Diagnostics
 

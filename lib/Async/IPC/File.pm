@@ -24,27 +24,25 @@ my $_stat_fields = sub {
 };
 
 my $_maybe_invoke_event = sub {
-   my ($self, $ev_name, $old, $new) = @_;
+   my ($self, $ev_name, $old, $new) = @_; my $events = $self->events;
 
-   exists $self->events->{ $ev_name }
-      and $self->events->{ $ev_name }->( $self, $old, $new );
+   exists $events->{ $ev_name } and defined $events->{ $ev_name }
+      and $events->{ $ev_name }->( $self, $old, $new );
 
    return;
 };
 
 my $_call_handler = sub {
    return sub {
-      my $self = shift; my $old = $self->last_stat;
+      my $self = shift; my $old = $self->last_stat; my $new = $self->path->stat;
 
-      not defined $old and not $self->path->exists and return;
+      not defined $old and not defined $new and return;
 
-      if (defined $old and not $self->path->exists) { # Path deleted
+      if (defined $old and not defined $new) { # Path deleted
          $self->$_maybe_invoke_event( 'on_stat_changed', $old );
          $self->last_stat( undef );
          return;
       }
-
-      my $new  = $self->path->stat;
 
       unless (defined $old) { # Watch for the path to be created
          $self->$_maybe_invoke_event( 'on_stat_changed', undef, $new );
@@ -79,18 +77,23 @@ around 'BUILDARGS' => sub {
    my ($orig, $self, @args) = @_; my $attr = $orig->( $self, @args );
 
    for my $stat ('devino', @{ $_stat_fields->() }, 'stat') {
-      my $ev = delete $attr->{ "on_${stat}_changed" };
+      my $code = delete $attr->{ "on_${stat}_changed" };
 
-      $attr->{events}->{ "on_${stat}_changed" } //= $ev;
+      defined $code and $attr->{events}->{ "on_${stat}_changed" } //= $code;
    }
 
    my $path; ($path = $attr->{path} and blessed $path
       and $path->isa( 'File::DataClass::IO' ))
       or  $attr->{path} = $path ? io $path : $path;
 
-   $attr->{last_stat} = ($attr->{path} && $attr->{path}->exists)
-                      ?  $attr->{path}->stat : undef;
-   $attr->{code     } = $_call_handler->();
+   if (my $handle = delete $attr->{handle}) {
+      blessed $handle or $handle = IO::Handle->new_from_fd( $handle, 'r' );
+      $attr->{path} = io { io_handle => $handle };
+   }
+
+   $path = $attr->{path} and $attr->{last_stat} = $path->stat;
+   $attr->{code} = $_call_handler->();
+
    return $attr;
 };
 
@@ -137,6 +140,11 @@ The supported event list is; C<device>, C<inode>, C<mode>, C<nlink>,
 C<uid>, C<gid>, C<device_id>, C<size>, C<atime>, C<mtime>,  C<ctime>,
 C<devino>, and C<stat>
 
+=item C<interval>
+
+Overrides the default, sets the time between polls of the file system to
+two seconds
+
 =item C<last_stat>
 
 =item C<path>
@@ -145,9 +153,9 @@ C<devino>, and C<stat>
 
 =head1 Subroutines/Methods
 
-=head2 BUILDARGS
+=head2 C<BUILDARGS>
 
-=head2 BUILD
+=head2 C<BUILD>
 
 =head1 Diagnostics
 

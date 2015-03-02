@@ -1,10 +1,13 @@
 use t::boilerplate;
 
 use Test::More;
+use Test::Compile;
 
-use_ok 'Async::IPC';
+my @pms = all_pm_files;
 
-done_testing;
+plan tests => @pms + 0;
+
+pm_file_ok( $_ ) for (@pms);
 
 # Local Variables:
 # mode: perl
