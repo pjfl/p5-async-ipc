@@ -7,23 +7,23 @@ use Async::IPC::Functions  qw( log_leader );
 use Class::Usul::Constants qw( FALSE TRUE );
 use Class::Usul::Functions qw( is_coderef throw );
 use Class::Usul::Types     qw( BaseType Bool NonEmptySimpleStr
-                               NonZeroPositiveInt Object );
+                               Object PositiveInt );
 use Scalar::Util           qw( blessed weaken );
 
 # Public attributes
-has 'autostart'   => is => 'ro',   isa => Bool, default => TRUE;
+has 'autostart'   => is => 'ro',   isa => Bool,               default => TRUE;
 
 has 'description' => is => 'ro',   isa => NonEmptySimpleStr, required => TRUE;
 
-has 'log_key'     => is => 'ro',   isa => NonEmptySimpleStr, required => TRUE;
-
 has 'loop'        => is => 'rwp',  isa => Object,            required => TRUE;
 
-has 'pid'         => is => 'lazy', isa => NonZeroPositiveInt;
+has 'name'        => is => 'ro',   isa => NonEmptySimpleStr, required => TRUE;
+
+has 'pid'         => is => 'rwp',  isa => PositiveInt,        default => 0;
 
 # Private attributes
 has '_usul'       => is => 'ro',   isa => BaseType,
-   handles        => [ qw( config debug encoding lock log run_cmd ) ],
+   handles        => [ qw( config debug lock log run_cmd ) ],
    init_arg       => 'builder', required => TRUE;
 
 sub can_event {
@@ -33,12 +33,10 @@ sub can_event {
 }
 
 sub capture_weakself {
-   my ($self, $code) = @_;
+   my ($self, $code) = @_; weaken $self;
 
    is_coderef $code or $self->can( $code ) or throw
       'Package [_1] cannot locate method [_2]', [ blessed $self, $code ];
-
-   weaken $self;
 
    return sub {
       my $cb = (is_coderef $code) ? $code : $self->$code;
@@ -53,7 +51,7 @@ sub invoke_event {
    my $code = $self->can_event( $ev_name )
       or throw 'Event [_1] unknown', [ $ev_name ];
 
-   my $lead = log_leader 'debug', $self->log_key, $self->pid;
+   my $lead = log_leader 'debug', $self->name, $self->pid;
 
    $self->log->debug( "${lead}Invoke event ${ev_name}" );
 
@@ -64,7 +62,7 @@ sub maybe_invoke_event {
    my ($self, $ev_name, @args) = @_;
 
    my $code = $self->can_event( $ev_name ) or return FALSE;
-   my $lead = log_leader 'debug', $self->log_key, $self->pid;
+   my $lead = log_leader 'debug', $self->name, $self->pid;
 
    $self->log->debug( "${lead}Invoke event ${ev_name}" );
 
@@ -109,14 +107,14 @@ until first use
 A required, immutable, non empty simple string. The description used by the
 logger
 
-=item C<log_key>
-
-A required, immutable, non empty simple string. Logger key used to identify a
-log entry
-
 =item C<loop>
 
 An instance of L<Async::IPC::Loop>
+
+=item C<name>
+
+A required, immutable, non empty simple string. Logger key used to identify a
+log entry
 
 =item C<pid>
 

@@ -80,7 +80,7 @@ sub stop {
 
    $self->is_running or return FALSE; $self->_set_is_running( FALSE );
 
-   my $lead = log_leader 'debug', $self->log_key, $self->pid;
+   my $lead = log_leader 'debug', $self->name, $self->pid;
 
    $self->log->debug( "${lead}Stopping ".$self->description );
    $self->loop->unwatch_time( $self->pid );

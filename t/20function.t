@@ -17,8 +17,8 @@ my $results     =  {};
 my $function    =  $factory->new_notifier
    (  code      => sub { shift; sum @_ },
       desc      => 'description',
-      key       => 'key',
       max_calls => $max_calls,
+      name      => 'key',
       on_exit   => sub { $loop->stop },
       on_return => sub { $results->{ $_[ 0 ] } = $_[ 1 ] },
       type      => 'function' );

@@ -3,22 +3,101 @@ package Async::IPC::Semaphore;
 use namespace::autoclean;
 
 use Moo;
+use Async::IPC::Functions  qw( log_leader read_exactly recv_arg_error
+                               send_msg terminate );
+use Async::IPC::Loop;
+use Async::IPC::Process;
 use Class::Usul::Constants qw( FALSE TRUE );
-use Class::Usul::Functions qw( arg_list );
+use Class::Usul::Functions qw( bson64id nonblocking_write_pipe_pair );
+use Class::Usul::Types     qw( Bool HashRef Object );
+use English                qw( -no_match_vars );
 use Scalar::Util           qw( refaddr );
+use Storable               qw( thaw );
+use Try::Tiny;
 
-extends q(Async::IPC::Routine);
+extends q(Async::IPC::Base);
+
+has 'child'      => is => 'lazy', isa => Object,  builder => sub {
+   Async::IPC::Process->new( $_[ 0 ]->child_args ) };
+
+has 'child_args' => is => 'lazy', isa => HashRef, default => sub { {} };
+
+has 'is_running' => is => 'rwp',  isa => Bool,    default => TRUE;
+
+# Private functions
+my $_call_handler = sub {
+   my $args   = shift;
+   my $before = delete $args->{before};
+   my $_code  = delete $args->{code  };
+   my $after  = delete $args->{after };
+   my $lock   = $args->{builder}->lock;
+   my $rdr    = $args->{call_pipe} ? $args->{call_pipe}->[ 0 ] : FALSE;
+   my $wtr    = $args->{retn_pipe} ? $args->{retn_pipe}->[ 1 ] : FALSE;
+   my $code   = sub { $lock->reset( k => $_[ 0 ] ); $_code->( @_ ) };
+
+   return sub {
+      my $self  = shift;
+      my $count = 0; my $lead = log_leader 'error', 'EXCODE', $PID;
+      my $log   = $self->log; my $max_calls = $self->max_calls;
+
+
+      $self->_set_loop( my $loop = Async::IPC::Loop->new );
+      $before and $before->( $self );
+
+      $rdr and $loop->watch_read_handle( $rdr, sub {
+         my $red = read_exactly $rdr, my $buf_len, 4;
+
+         recv_arg_error $log, $PID, $red and terminate $loop and return;
+         $red = read_exactly $rdr, my $buf, unpack 'I', $buf_len;
+         recv_arg_error $log, $PID, $red and terminate $loop and return;
+
+         try {
+            my $param = $buf ? thaw $buf : [ $PID, {} ];
+            my $rv    = $code->( @{ $param } );
+
+            $wtr and send_msg $wtr, $log, 'SENDRV', $param->[ 0 ], $rv;
+         }
+         catch { $log->error( $lead.$_ ) };
+
+         $max_calls and ++$count >= $max_calls and terminate $loop;
+         return;
+      } );
+
+      $loop->watch_signal( TERM => sub { terminate $loop } );
+      $loop->start; $after and $after->( $self );
+      return;
+   };
+};
 
 # Construction
 around 'BUILDARGS' => sub {
-   my ($orig, $self, @args) = @_; my $attr = arg_list @args;
+   my ($orig, $self, @args) = @_; my $args = $orig->( $self, @args ); my $attr;
 
-   my $code = $attr->{code}; my $lock = $attr->{builder}->lock;
+   for my $k ( qw( builder description loop name ) ) {
+      $attr->{ $k } = $args->{ $k };
+   }
 
-   $attr->{code} = sub { $lock->reset( k => $_[ 0 ] ); $code->( @_ ) };
+   for my $k ( qw( autostart ) ) {
+      my $v = delete $args->{ $k }; defined $v and $attr->{ $k } = $v;
+   }
 
-   return $orig->( $self, $attr );
+   $args->{retn_pipe } = nonblocking_write_pipe_pair if ($args->{on_return});
+   $args->{call_pipe } = nonblocking_write_pipe_pair;
+   $args->{code      } = $_call_handler->( $args );
+   $attr->{child_args} = $args;
+   return $attr;
 };
+
+sub _build_pid {
+   return $_[ 0 ]->child->pid;
+}
+
+# Public methods
+sub call {
+   my ($self, @args) = @_; $self->is_running or return FALSE;
+
+   $args[ 0 ] ||= bson64id; return $self->child->send( @args );
+}
 
 # Public methods
 sub raise {
@@ -27,6 +106,16 @@ sub raise {
    $self->lock->set( k => $key, async => TRUE ) or return TRUE;
 
    return $self->call( $key );
+}
+
+sub stop {
+   my $self = shift;
+
+   $self->is_running or return; $self->_set_is_running( FALSE );
+
+   my $pid  = $self->child->pid; $self->child->stop;
+
+   $self->loop->watch_child( 0, sub { $pid } ); return;
 }
 
 1;

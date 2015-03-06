@@ -20,7 +20,7 @@ my $timer      =  $factory->new_notifier
          $count == $max_calls and $loop->stop },
       interval => 1,
       desc     => 'description',
-      key      => 'key',
+      name     => 'key',
       type     => 'periodical' );
 
 $loop->start; $timer->stop;

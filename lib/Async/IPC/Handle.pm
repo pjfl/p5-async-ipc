@@ -6,7 +6,7 @@ use namespace::autoclean;
 use Moo;
 use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE TRUE );
 use Class::Usul::Functions qw( throw );
-use Class::Usul::Types     qw( Bool CodeRef Maybe Object );
+use Class::Usul::Types     qw( Bool CodeRef FileHandle Maybe Object );
 use IO::Handle;
 use Unexpected::Functions  qw( Unspecified );
 
@@ -52,7 +52,7 @@ has 'on_read_ready'   => is => 'ro',  isa => Maybe[CodeRef];
 
 has 'on_write_ready'  => is => 'ro',  isa => Maybe[CodeRef];
 
-has 'read_handle'     => is => 'rwp', isa => Maybe[Object];
+has 'read_handle'     => is => 'rwp', isa => Maybe[FileHandle];
 
 has 'want_readready'  => is => 'rw',  isa => Bool, default => FALSE,
    trigger            => $_toggle_read_watcher;
@@ -60,7 +60,7 @@ has 'want_readready'  => is => 'rw',  isa => Bool, default => FALSE,
 has 'want_writeready' => is => 'rw',  isa => Bool, default => FALSE,
    trigger            => $_toggle_write_watcher;
 
-has 'write_handle'    => is => 'rwp', isa => Maybe[Object];
+has 'write_handle'    => is => 'rwp', isa => Maybe[FileHandle];
 
 # Construction
 around 'BUILDARGS' => sub {
@@ -103,8 +103,8 @@ sub close {
    my $read_handle  = $self->read_handle;  $self->_set_read_handle ( undef );
    my $write_handle = $self->write_handle; $self->_set_write_handle( undef );
 
-   defined $read_handle  and $read_handle->close;
-   defined $write_handle and $write_handle->close;
+   defined $read_handle  and close $read_handle;
+   defined $write_handle and close $write_handle;
 
    return $self->maybe_invoke_event( 'on_closed' );
 }

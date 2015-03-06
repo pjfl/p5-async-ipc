@@ -19,7 +19,7 @@ my $size     = 0;
 my $path     = io [ 't', 'dummy' ];
 my $file     = $factory->new_notifier
    (  desc   => 'description',
-      key    => 'key',
+      name   => 'key',
       on_size_changed => sub { $size = $_[ 2 ] },
       on_stat_changed => sub {
          not $_[ 1 ] and $_[ 2 ] and $found = 1;
@@ -45,7 +45,7 @@ my $called = 0; my $pair = nonblocking_write_pipe_pair();
 $file = $factory->new_notifier
    (  desc   => 'description',
       handle => $pair->[ 0 ],
-      key    => 'key',
+      name   => 'key',
       on_stat_changed => sub { $called++ },
       type   => 'file' );
 

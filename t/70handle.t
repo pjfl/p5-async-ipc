@@ -19,14 +19,19 @@ use_ok 'Async::IPC::Handle';
 my $args = { builder     => $prog,
              description => 'description',
              handle      => 'Hello',
-             log_key     => 'log_key',
+             name        => 'log_key',
              loop        => $loop, };
 
 ok exception { Async::IPC::Handle->new( %{ $args } ) }, 'Not a filehandle';
 
-my $pair = nonblocking_write_pipe_pair;
-my $rdr  = IO::Handle->new_from_fd( $pair->[ 0 ], 'r' );
-my $wtr  = IO::Handle->new_from_fd( $pair->[ 1 ], 'w' );
+sub handle_pair {
+   my $pair = nonblocking_write_pipe_pair;
+   my $rdr  = IO::Handle->new_from_fd( $pair->[ 0 ], 'r' );
+   my $wtr  = IO::Handle->new_from_fd( $pair->[ 1 ], 'w' );
+   return [ $rdr, $wtr ];
+}
+
+my ($rdr, $wtr) = @{ handle_pair() };
 
 my $readready = 0; my @rrargs; delete $args->{handle};
 
@@ -35,9 +40,9 @@ $args->{on_read_ready} = sub { @rrargs = @_; $readready = 1 };
 
 my $handle = Async::IPC::Handle->new( %{ $args } );
 
-ok defined $handle, 'Handle defined';
-isa_ok $handle, 'Async::IPC::Handle', 'Handle';
-is $handle->read_handle, $rdr, 'Read handle defined';
+ok defined $handle, 'Read handle defined';
+isa_ok $handle, 'Async::IPC::Handle', 'Read handle';
+is $handle->read_handle, $rdr, 'Read handle is right handle';
 is $handle->write_handle, undef, 'Write handle undefined';
 ok $handle->want_readready, 'Want readready true';
 is $readready, 0, 'Readready while idle';
@@ -51,5 +56,29 @@ $rdr->getline; $readready = 0;
 
 ok exception { $handle->want_writeready( 1 ); },
    'Setting want_writeready with write_handle == undef dies';
+
+$handle->close; ($rdr, $wtr) = @{ handle_pair() };
+
+my $writeready = 0; my @wrargs;
+
+delete $args->{read_handle}; delete $args->{on_read_ready};
+
+#$args->{read_handle   } = $rdr;
+$args->{write_handle  } = $wtr;
+$args->{on_write_ready} = sub { @wrargs = @_; $writeready = 1 };
+
+$handle = Async::IPC::Handle->new( %{ $args } );
+
+ok defined $handle, 'Write handle defined';
+isa_ok $handle, 'Async::IPC::Handle', 'Write handle';
+is $handle->write_handle, $wtr, 'Write handle is right handle';
+is $handle->read_handle, undef, 'Read handle undefined';
+ok $handle->want_writeready, 'Want writeready true';
+is $writeready, 0, 'Writeready while idle';
+
+$handle->want_writeready( 1 ); $loop->once;
+
+is $writeready, 1, 'Writeready while writeable';
+is $wrargs[ 0 ], $handle, 'Write ready args while writeable';
 
 done_testing;

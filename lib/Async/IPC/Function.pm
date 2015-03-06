@@ -111,11 +111,11 @@ around 'BUILDARGS' => sub {
       defined $args->{ $k } and $attr->{ $k } = $args->{ $k };
    }
 
-   for my $k ( qw( autostart channels log_key max_workers ) ) {
+   for my $k ( qw( autostart channels max_workers name ) ) {
       my $v = delete $args->{ $k }; defined $v and $attr->{ $k } = $v;
    }
 
-   $args->{log_key    } = delete $args->{worker_key} || 'WORKER';
+   $args->{name       } = delete $args->{worker_name} || 'WORKER';
    $attr->{worker_args} = $args;
    return $attr;
 };
@@ -152,7 +152,7 @@ sub stop {
 
    $self->is_running or return; $self->_set_is_running( FALSE );
 
-   my $lead = log_leader 'debug', $self->log_key, $self->pid;
+   my $lead = log_leader 'debug', $self->name, $self->pid;
 
    $self->log->debug( "${lead}Stopping ".$self->description.' pool' );
 

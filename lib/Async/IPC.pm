@@ -24,12 +24,12 @@ has '_usul' => is => 'ro',   isa => BaseType, handles => [ 'log' ],
 sub new_notifier {
    my ($self, %p) = @_;
 
-   my $desc = delete $p{desc}; my $log = $self->log; my $key = delete $p{key};
+   my $desc = delete $p{desc}; my $log = $self->log; my $name = delete $p{name};
 
    my $log_level = delete $p{log_level} || 'info'; my $type = delete $p{type};
 
    my $logger = sub {
-      my ($level, $id, $msg) = @_; my $lead = log_leader $level, $key, $id;
+      my ($level, $id, $msg) = @_; my $lead = log_leader $level, $name, $id;
 
       return $log->$level( $lead.$msg );
    };
@@ -49,8 +49,8 @@ sub new_notifier {
 
    my $notifier = $class->new( builder     => $self->_usul,
                                description => $desc,
-                               log_key     => $key,
                                loop        => $self->loop,
+                               name        => $name,
                                on_exit     => $on_exit, %p, );
 
    $desc = $notifier->description;

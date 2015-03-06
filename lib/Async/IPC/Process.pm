@@ -5,17 +5,18 @@ use namespace::autoclean;
 use Moo;
 use Async::IPC::Functions  qw( log_leader read_exactly recv_rv_error send_msg );
 use Class::Usul::Constants qw( FALSE SPC TRUE );
-use Class::Usul::Functions qw( is_coderef );
-use Class::Usul::Types     qw( ArrayRef CodeRef FileHandle
-                               NonEmptySimpleStr PositiveInt Undef );
+use Class::Usul::Functions qw( is_coderef throw );
+use Class::Usul::Types     qw( ArrayRef CodeRef NonEmptySimpleStr
+                               Object PositiveInt Undef );
 use English                qw( -no_match_vars );
 use Scalar::Util           qw( weaken );
-use Storable               qw( thaw );
 use Try::Tiny;
 
 extends q(Async::IPC::Base);
 
 # Public attributes
+has 'call_ch'   => is => 'ro', isa => Object;
+
 has 'code'      => is => 'ro', isa => CodeRef | ArrayRef | NonEmptySimpleStr,
    required     => TRUE;
 
@@ -23,85 +24,59 @@ has 'max_calls' => is => 'ro', isa => PositiveInt, default => 0;
 
 has 'on_exit'   => is => 'ro', isa => CodeRef | Undef;
 
-has 'on_return' => is => 'ro', isa => CodeRef | Undef;
+has 'on_recv'   => is => 'ro', isa => CodeRef | Undef;
 
-has 'reader'    => is => 'ro', isa => FileHandle | Undef;
-
-has 'writer'    => is => 'ro', isa => FileHandle | Undef;
+has 'return_ch' => is => 'ro', isa => Object | Undef;
 
 # Construction
-around 'BUILDARGS' => sub {
-   my ($orig, $self, @args) = @_; my $attr = $orig->( $self, @args );
-
-   my $call_pipe = delete $attr->{call_pipe};
-   my $retn_pipe = delete $attr->{retn_pipe};
-
-   $call_pipe and $attr->{writer} = $call_pipe->[ 1 ];
-   $retn_pipe and $attr->{reader} = $retn_pipe->[ 0 ];
-   return $attr;
-};
-
 sub BUILD {
-   my $self = shift; my $pid = $self->pid; # Start child process
-
-   $self->on_exit   and $self->loop->watch_child( $pid, $self->on_exit );
-   $self->on_return and $self->set_return_callback( $self->on_return );
-   return;
-}
-
-sub _build_pid {
-   my $self = shift; weaken( $self );
-   my $code = $self->code;
-   my $temp = $self->config->tempdir;
-   my $args = { async => TRUE, ignore_zombies => FALSE };
-   my $name = $self->config->pathname->abs2rel.' - '.(lc $self->log_key);
-   my $cmd  = (is_coderef $code)
-            ? [ sub { $PROGRAM_NAME = $name; $code->( $self ) } ]
-            : $code;
-
-   $self->debug and $args->{err} = $temp->catfile( (lc $self->log_key).'.err' );
-
-   return $self->run_cmd( $cmd, $args )->pid;
+   my $self = shift; $self->autostart and $self->start; return;
 }
 
 # Public methods
 sub is_running {
-   return CORE::kill 0, $_[ 0 ]->pid;
+   my $self = shift; return $self->pid ? CORE::kill 0, $self->pid : FALSE;
 }
 
 sub send {
-   my $self = shift; return send_msg $self->writer, $self->log, 'SNDARG', @_;
+   my $self = shift; return $self->call_ch->send( [ @_ ] );
 }
 
-sub set_return_callback {
-   my ($self, $code, $loop) = @_; my $rdr = $self->reader or return;
+sub set_recv_callback {
+   my ($self, $code, $loop) = @_; # TODO: The loop thing
 
-   my $lead = log_leader 'error', 'EXECRV', my $pid = $self->pid;
+   my $return_ch = $self->return_ch
+      or throw 'Cannot set receiving callback without a return channel';
 
-   my $log  = $self->log; $loop //= $self->loop;
+   $return_ch->recv( on_recv => $code ); $return_ch->start( 'read' );
 
-   $loop->watch_read_handle( $rdr, sub {
-      my $red = read_exactly $rdr, my $buf_len, 4;
+   return;
+}
 
-      recv_rv_error $log, $pid, $red
-         and return $loop->unwatch_read_handle( $rdr );
-      $red = read_exactly $rdr, my $buf, unpack 'I', $buf_len;
-      recv_rv_error $log, $pid, $red
-         and return $loop->unwatch_read_handle( $rdr );
+sub start {
+   my $self = shift; weaken $self; $self->is_running and return;
+   my $code = $self->code;
+   my $temp = $self->config->tempdir;
+   my $args = { async => TRUE, ignore_zombies => FALSE };
+   my $name = $self->config->pathname->abs2rel.' - '.(lc $self->name);
+   my $cmd  = (is_coderef $code)
+            ? [ sub { $PROGRAM_NAME = $name; $code->( $self ) } ]
+            : $code;
 
-      try   { $code->( @{ $buf ? thaw $buf : [] } ) }
-      catch { $log->error( $lead.$_ ) };
+   $self->debug and $args->{err} = $temp->catfile( (lc $self->name).'.err' );
 
-      return;
-   } );
+   $self->_set_pid( my $pid = $self->run_cmd( $cmd, $args )->pid );
 
+   $self->on_exit and $self->loop->watch_child( $pid, $self->on_exit );
+   $self->on_recv and $self->set_recv_callback( $self->on_recv );
+   $self->call_ch->start( 'write' );
    return;
 }
 
 sub stop {
    my $self = shift; $self->is_running or return;
 
-   my $lead = log_leader 'debug', $self->log_key, $self->pid;
+   my $lead = log_leader 'debug', $self->name, $self->pid;
 
    $self->log->debug( "${lead}Stopping ".$self->description );
    CORE::kill 'TERM', $self->pid;
@@ -157,9 +132,9 @@ before terminating. When zero do not terminate
 The code reference to call when the process exits. The factory wraps this
 reference to log when it's called
 
-=item C<on_return>
+=item C<on_recv>
 
-Invoke this callback subroutine when the code reference returns
+Invoke this callback subroutine when the code reference returns a value
 
 =item C<reader>
 
@@ -194,11 +169,11 @@ Returns true if the child process is running
 
 Returns true on success, false otherwise. Sends arguments to the child process
 
-=head2 C<set_return_callback>
+=head2 C<set_recv_callback>
 
-   $process->set_return_callback( $code, $loop );
+   $process->set_recv_callback( $code, $loop );
 
-Sets the return callback to the specified code reference. If C<$loop>
+Sets the receiving callback to the specified code reference. If C<$loop>
 is specified use that loop object as opposed to ours
 
 =head2 C<stop>

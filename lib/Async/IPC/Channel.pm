@@ -8,8 +8,9 @@ use Async::IPC::Stream;
 use Class::Usul::Constants qw( FALSE NUL TRUE );
 use Class::Usul::Functions qw( ensure_class_loaded nonblocking_write_pipe_pair
                                throw );
-use Class::Usul::Types     qw( ArrayRef CodeRef Maybe Object );
+use Class::Usul::Types     qw( ArrayRef CodeRef FileHandle Maybe Object );
 use English                qw( -no_match_vars );
+use IO::Handle;
 use Type::Utils            qw( enum );
 
 extends q(Async::IPC::Base);
@@ -43,7 +44,7 @@ my $_maybe_close_read_handle = sub {
    my $self = shift;
 
    if ($self->read_handle) {
-      $self->read_handle->close; $self->_set_read_handle( undef );
+      close $self->read_handle; $self->_set_read_handle( undef );
    }
 
    return;
@@ -53,7 +54,7 @@ my $_maybe_close_write_handle = sub {
    my $self = shift;
 
    if ($self->write_handle) {
-      $self->write_handle->close; $self->_set_write_handle( undef );
+      close $self->write_handle; $self->_set_write_handle( undef );
    }
 
    return;
@@ -92,7 +93,7 @@ my $_on_stream_read = sub {
 my $_recv_async = sub {
    my ($self, %args) = @_;
 
-   my $on_recv = $args{on_recv}; my $on_eof = $args{on_eof };
+   my $on_recv = $args{on_recv}; my $on_eof = $args{on_eof};
 
    push @{ $self->result_queue }, sub {
       my ($self, $type, $record) = @_;
@@ -120,19 +121,27 @@ my $_send_frozen = sub {
 
    $self->write_mode eq 'async' and return $self->stream->write( $bytes );
 
-   my $len  = $self->write_handle->syswrite( $bytes, length $bytes );
+   my $len  = syswrite $self->write_handle, $bytes, length $bytes; my $lead;
 
-   defined $len and return $len;
+   if (defined $len) {
+      $lead = log_leader 'debug', $self->name, $self->pid;
+      $self->log->debug( $lead."Wrote ${len} bytes" );
+   }
+   else {
+      $lead = log_leader 'error', $self->name, $self->pid;
+      $self->log->error( $lead.$OS_ERROR );
+   }
 
-   my $lead = log_leader 'error', $self->log_key, $self->pid;
-
-   $self->log->error( $lead.$OS_ERROR );
-   return;
+   return $len;
 };
 
 my $_build_stream = sub {
-   my $self = shift; return IO::Async::Stream->new
+   my $self = shift; return Async::IPC::Stream->new
       (  autoflush    => TRUE,
+         builder      => $self->_usul,
+         description  => $self->description.' stream',
+         loop         => $self->loop,
+         name         => $self->name.'_stream',
          on_read      => $self->capture_weakself( $_on_stream_read ),
          read_handle  => $self->read_handle,
          write_handle => $self->write_handle, );
@@ -153,8 +162,8 @@ has 'on_recv'      => is => 'ro',   isa => Maybe[CodeRef];
 has 'pair'         => is => 'lazy', isa => ArrayRef,
    builder         => sub { nonblocking_write_pipe_pair() };
 
-has 'read_handle'  => is => 'lazy', isa => Maybe[Object],
-   builder         => sub { $_[ 0 ]->pair->[ 0 ] };
+has 'read_handle'  => is => 'rwp',  isa => Maybe[FileHandle],
+   builder         => sub { $_[ 0 ]->pair->[ 0 ] }, lazy => TRUE;
 
 has 'read_mode'    => is => 'lazy', isa => $MODE_TYPE, default => 'sync';
 
@@ -162,10 +171,22 @@ has 'result_queue' => is => 'ro',   isa => ArrayRef, builder => sub { [] };
 
 has 'stream'       => is => 'lazy', isa => Object,   builder => $_build_stream;
 
-has 'write_handle' => is => 'lazy', isa => Maybe[Object],
-   builder         => sub { $_[ 0 ]->pair->[ 1 ] };
+has 'write_handle' => is => 'rwp',  isa => Maybe[FileHandle],
+   builder         => sub { $_[ 0 ]->pair->[ 1 ] }, lazy => TRUE;
 
 has 'write_mode'   => is => 'ro',   isa => $MODE_TYPE, default => 'sync';
+
+sub BUILD {
+   my $self = shift; $self->read_handle; $self->write_handle;
+
+   ($self->read_mode eq 'async' or $self->write_mode eq 'async')
+      and $self->stream;
+   return;
+}
+
+sub DEMOLISH {
+   $_[ 0 ]->close; return;
+}
 
 sub close {
    my $self = shift;
@@ -181,9 +202,9 @@ sub close {
 sub recv {
    my ($self, @args) = @_;
 
-   $self->read_mode eq 'async' and return $self->_recv_async( @args );
+   $self->read_mode eq 'async' and return $self->$_recv_async( @args );
 
-   return $self->_recv_sync( @args );
+   return $self->$_recv_sync( @args );
 }
 
 sub send {
@@ -193,15 +214,11 @@ sub send {
 sub start {
    my ($self, $dirn) = @_;
 
-   if ($dirn eq 'read') {
-      $self->$_maybe_close_write_handle;
-      $self->read_mode eq 'async' and $self->stream;
-   }
-   elsif ($dirn eq 'write') {
-      $self->$_maybe_close_read_handle;
-   }
+   if    ($dirn eq 'read' ) { $self->$_maybe_close_write_handle }
+   elsif ($dirn eq 'write') { $self->$_maybe_close_read_handle  }
    else { throw 'Must start either read or write' }
 
+   $self->_set_pid( $PID );
    return;
 }
 

@@ -7,9 +7,9 @@ use Encode 2.11            qw( find_encoding STOP_AT_PARTIAL );
 use Errno                  qw( EAGAIN EWOULDBLOCK EINTR EPIPE );
 use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE NUL TRUE );
 use Class::Usul::Functions qw( is_coderef throw );
-use Class::Usul::Types     qw( ArrayRef Bool CodeRef Maybe NonEmptySimpleStr
-                               NonZeroPositiveInt Object PositiveInt
-                               ScalarRef Str );
+use Class::Usul::Types     qw( ArrayRef Bool CodeRef EncodingType Maybe
+                               NonEmptySimpleStr NonZeroPositiveInt Object
+                               PositiveInt ScalarRef Str );
 use English                qw( -no_match_vars );
 use Scalar::Util           qw( blessed );
 use Unexpected::Functions  qw( Unspecified );
@@ -49,6 +49,26 @@ my $_build_encoder = sub {
    return $encoder;
 };
 
+my $_build_reader = sub {
+   return sub {
+      my ($self, $handle, undef, $len) = @_;
+
+      return sysread $handle, $_[ 2 ], $len;
+   }
+};
+
+my $_build_writer = sub {
+   return sub {
+      my ($self, $handle, undef, $len) = @_;
+
+      my $wrote = syswrite $handle, $_[ 2 ], $len;
+
+      $wrote and substr( $_[ 2 ], 0, $wrote ) = NUL;
+
+      return $wrote;
+   }
+};
+
 my $_handle_read_error = sub {
    my ($self, $errno) = @_; $_nonfatal_error->( $errno ) and return;
 
@@ -79,22 +99,7 @@ my $_handle_write_error = sub {
 };
 
 my $_is_empty = sub {
-   return not @{ $_[ 0 ]->writequeue };
-};
-
-my $_sysread = sub {
-   my $self = shift; my ($handle, undef, $len) = @_;
-
-   return $handle->sysread( $_[ 1 ], $len );
-};
-
-my $_syswrite = sub {
-   my $self  = shift; my ($handle, undef, $len) = @_;
-   my $wrote = $handle->syswrite( $_[ 1 ], $len );
-
-   $wrote or return $wrote; # zero or undef
-   substr( $_[ 1 ], 0, $wrote ) = NUL;
-   return $wrote;
+   return not @{ $_[ 0 ]->writequeue // [] };
 };
 
 my $_toggle_read_watcher = sub {
@@ -102,6 +107,7 @@ my $_toggle_read_watcher = sub {
 
    $self->read_handle and $self->want_readready
       ( $self->want_readready_for_read || $self->want_readready_for_write );
+
    return;
 };
 
@@ -134,7 +140,7 @@ my $_flush_one_read = sub {
    if (is_coderef $ret) { # Replace the top CODE, or add it if there was none
       $readqueue->[ 0 ] = Async::IPC::Reader->new( $ret, undef ); $ret = TRUE;
    }
-   elsif( @{ $readqueue } and not defined $ret ) {
+   elsif (@{ $readqueue } and not defined $ret) {
       shift @{ $readqueue }; $ret = TRUE;
    }
    else { $ret = $ret && (($len > 0) || $eof) }
@@ -188,7 +194,8 @@ my $_do_read = sub {
    my $self = shift; my $handle = $self->read_handle;
 
    while (TRUE) {
-      my $data; my $red = $self->reader->( $handle, $data, $self->read_len );
+      my $data;
+      my $red = $self->reader->( $self, $handle, $data, $self->read_len );
 
       defined $red or return $self->$_handle_read_error( $ERRNO );
 
@@ -243,24 +250,28 @@ my $_do_write = sub {
 };
 
 my $_on_read_ready = sub {
-   my $self = shift;
+   return sub {
+      my $self = shift;
 
-   $self->want_readready_for_read  and $self->$_do_read;
-   $self->want_readready_for_write and $self->$_do_write;
-   return;
+      $self->want_readready_for_read  and $self->$_do_read;
+      $self->want_readready_for_write and $self->$_do_write;
+      return;
+   }
 };
 
 my $_on_write_ready = sub {
-   my $self = shift;
+   return sub {
+      my $self = shift;
 
-   unless ($self->writeable) {
-      $self->maybe_invoke_event( 'on_writeable_start' );
-      $self->_set_writeable( TRUE );
+      unless ($self->writeable) {
+         $self->maybe_invoke_event( 'on_writeable_start' );
+         $self->_set_writeable( TRUE );
+      }
+
+      $self->want_writeready_for_read  and $self->$_do_read;
+      $self->want_writeready_for_write and $self->$_do_write;
+      return;
    }
-
-   $self->want_writeready_for_read  and $self->$_do_read;
-   $self->want_writeready_for_write and $self->$_do_write;
-   return;
 };
 
 # Public attributes
@@ -275,6 +286,8 @@ has 'close_on_read_eof'         => is => 'ro',   isa => Bool, default => TRUE;
 has 'encoder'                   => is => 'lazy', isa => Maybe[Object],
    builder                      => $_build_encoder;
 
+has 'encoding'                  => is => 'ro',   isa => Maybe[EncodingType];
+
 has 'flushing_read'             => is => 'rwp',  isa => Bool, default => FALSE;
 
 has 'on_outgoing_empty'         => is => 'ro',   isa => Maybe[CodeRef];
@@ -287,11 +300,11 @@ has 'on_read_error'             => is => 'ro',   isa => Maybe[CodeRef];
 
 has 'on_read_high_watermark'    => is => 'ro',   isa => CodeRef,
    builder                      => sub {
-      $_[ 0 ]->want_readready_for_read( FALSE ) };
+      sub { $_[ 0 ]->want_readready_for_read( FALSE ) } };
 
 has 'on_read_low_watermark'     => is => 'ro',   isa => CodeRef,
    builder                      => sub {
-      $_[ 0 ]->want_readready_for_read( TRUE ) };
+      sub { $_[ 0 ]->want_readready_for_read( TRUE ) } };
 
 has '+on_read_ready'            => default => $_on_read_ready;
 
@@ -322,23 +335,26 @@ has 'readbuff'                  => is => 'rwp',  isa => ScalarRef,
    builder                      => sub { my $v = NUL; return \$v };
 
 has 'reader'                    => is => 'ro',   isa => CodeRef,
-   default                      => $_syswrite;
+   builder                      => $_build_reader;
+
+has 'readqueue'                 => is => 'ro',   isa => ArrayRef,
+   builder                      => sub { [] };
 
 has 'stream_closing'            => is => 'rwp',  isa => Bool, default => FALSE;
 
-has 'want_readready_for_read'   => is => 'rw',   isa => Bool, default => FALSE,
-   trigger                      => $_toggle_read_watcher;
+has 'want_readready_for_read'   => is => 'rw',   isa => Bool, default => TRUE,
+   lazy                         => TRUE, trigger => $_toggle_read_watcher;
 
 has 'want_readready_for_write'  => is => 'rw',   isa => Bool, default => FALSE,
-   trigger                      => $_toggle_read_watcher;
+   lazy                         => TRUE, trigger => $_toggle_read_watcher;
 
 has 'want_writeready_for_read'  => is => 'rw',   isa => Bool, default => FALSE,
-   trigger                      => $_toggle_write_watcher;
+   lazy                         => TRUE, trigger => $_toggle_write_watcher;
 
 has 'want_writeready_for_write' => is => 'rw',   isa => Bool, default => FALSE,
-   trigger                      => $_toggle_write_watcher;
+   lazy                         => TRUE, trigger => $_toggle_write_watcher;
 
-has 'writable'                  => is => 'rwp',  isa => Bool, default => TRUE;
+has 'writeable'                 => is => 'rwp',  isa => Bool, default => TRUE;
 
 has 'write_all'                 => is => 'ro',   isa => Bool, default => FALSE;
 
@@ -348,10 +364,10 @@ has 'write_len'                 => is => 'ro',   isa => NonZeroPositiveInt,
    default                      => 8_192;
 
 has 'writequeue'                => is => 'ro',   isa => ArrayRef,
-   default                      => sub { [] };
+   builder                      => sub { [] };
 
 has 'writer'                    => is => 'ro',   isa => CodeRef,
-   default                      => $_syswrite;
+   builder                      => $_build_writer;
 
 # Construction
 sub BUILD {
@@ -399,11 +415,11 @@ sub write {
    my ($self, $data, %params) = @_;
 
    my $lead; $self->stream_closing
-      and $lead = log_leader( 'error', $self->log_key, $self->pid )
+      and $lead = log_leader( 'error', $self->name, $self->pid )
       and $self->log->error( "${lead}Cannot write to a closing Stream" )
       and return;
 
-   my $handle = $self->write_handle or throw Unspecified, [ 'write_handle' ];
+   my $handle = $self->write_handle or throw Unspecified, [ 'write handle' ];
 
    my $encoder; not ref $data and $encoder = $self->encoder
        and $data = $encoder->encode( $data );
@@ -567,7 +583,7 @@ Defines the following attributes;
 
 =item C<stream_closing>
 
-=item C<writable>
+=item C<writeable>
 
 =item C<write_all>
 
