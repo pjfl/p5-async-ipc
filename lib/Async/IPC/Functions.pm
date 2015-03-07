@@ -8,8 +8,7 @@ use Class::Usul::Functions qw( pad );
 use English                qw( -no_match_vars );
 use Storable               qw( nfreeze );
 
-our @EXPORT_OK = ( qw( log_leader read_exactly recv_arg_error recv_rv_error
-                       send_msg terminate ) );
+our @EXPORT_OK = ( qw( log_leader read_error read_exactly send_msg terminate ));
 
 # Private functions
 my $_padid = sub {
@@ -25,15 +24,6 @@ my $_padkey = sub {
 my $_recv_hndlr = sub {
    my ($key, $log, $id, $red) = @_;
 
-   unless (defined $red) {
-      $log->error( log_leader( 'error', $key, $id ).$OS_ERROR ); return TRUE;
-   }
-
-   unless (length $red) {
-      $log->info( log_leader( 'info', $key, $id ).'EOF' ); return TRUE;
-   }
-
-   return FALSE;
 };
 
 # Public functions
@@ -41,6 +31,22 @@ sub log_leader ($$;$) {
    my $dkey = $_padkey->( $_[ 0 ], $_[ 1 ] ); my $did = $_padid->( $_[ 2 ] );
 
    return "${dkey}[${did}]: ";
+}
+
+sub read_error ($$) {
+   my ($notifier, $red) = @_; my $pid = $notifier->pid;
+
+   my $log = $notifier->log; my $name = $notifier->name;
+
+   unless (defined $red) {
+      $log->error( log_leader( 'error', $name, $pid ).$OS_ERROR ); return TRUE;
+   }
+
+   unless (length $red) {
+      $log->info( log_leader( 'info', $name, $pid ).'EOF' ); return TRUE;
+   }
+
+   return FALSE;
 }
 
 sub read_exactly ($$$) {
@@ -53,14 +59,6 @@ sub read_exactly ($$$) {
    }
 
    return $_[ 2 ];
-}
-
-sub recv_arg_error ($$$) {
-   return $_recv_hndlr->( 'RCVARG', @_ );
-}
-
-sub recv_rv_error ($$$) {
-   return $_recv_hndlr->( 'RECVRV', @_ );
 }
 
 sub send_msg ($$$;@) {
@@ -122,6 +120,13 @@ Defines no attributes
 
 Returns the leader string for a log message
 
+=head2 C<read_error>
+
+   $bool = read_error $notifier, $bytes_red;
+
+Returns true if there was an error receiving the arguments in a child process
+call. Returns false otherwise. Logs the error if one occurs
+
 =head2 C<read_exactly>
 
    $bytes_red = read_exactly $file_handle, $buffer, $length;
@@ -129,20 +134,6 @@ Returns the leader string for a log message
 Returns the number of bytes read from the file handle on success. Returns
 undefined if there is a read error, returns the null string if nothing is read
 The read bytes are appended to the buffer
-
-=head2 C<recv_arg_error>
-
-   $bool = recv_arg_error $log_object, $id_of_log_entry, $bytes_red;
-
-Returns true if there was an error receiving the arguments in a child process
-call. Returns false otherwise. Logs the error if one occurs
-
-=head2 C<recv_rv_error>
-
-   $bool = recv_rv_error $log_object, $id_of_log_entry, $bytes_red;
-
-Returns true if there was an error receiving the return value from a child
-process call. Returns false otherwise. Logs the error if one occurs
 
 =head2 C<send_msg>
 

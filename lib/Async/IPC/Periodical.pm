@@ -8,7 +8,6 @@ use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE TRUE );
 use Class::Usul::Functions qw( throw );
 use Class::Usul::Types     qw( Bool CodeRef NonZeroPositiveInt
                                SimpleStr Undef );
-use Scalar::Util           qw( weaken );
 use Unexpected::Functions  qw( Unspecified );
 
 extends q(Async::IPC::Base);
@@ -41,50 +40,54 @@ sub _build_pid {
 
 # Public methods
 sub once {
-   my $self = shift; my $code = $self->code;
+   my $self = shift;
 
-   $self->is_running and throw 'Process [_1] already running', [ $self->pid ];
+   $self->is_running and return; $self->_set_is_running( TRUE );
 
+   my $code      = $self->code;
+   my $cb        = $self->capture_weakself( sub {
+      my $self   = shift; $code->( $self ); $self->_set_is_running( FALSE ) } );
    my $time_spec = $self->time_spec or throw Unspecified, [ 'time_spec' ];
 
-   weaken( $self ); my $cb = sub {
-      $code->( $self ); $self->_set_is_running( FALSE ); };
-
    $self->loop->watch_time( $self->pid, $cb, $self->interval, $time_spec );
-   $self->_set_is_running( TRUE );
-   return;
+   return TRUE;
 }
 
 sub restart {
-   my $self = shift; my $cb = $self->loop->unwatch_time( $self->pid );
+   my $self = shift; $self->is_running or return;
+
+   my $cb = $self->loop->unwatch_time( $self->pid );
 
    $cb and $self->loop->watch_time
       ( $self->pid, $cb, $self->interval, $self->time_spec );
-   return;
+   return TRUE;
 }
 
 sub start {
-   my $self = shift; my $code = $self->code;
+   my $self = shift;
 
-   $self->is_running and throw 'Process [_1] already running', [ $self->pid ];
+   $self->is_running and return; $self->_set_is_running( TRUE );
 
-   weaken( $self ); my $cb = sub { $code->( $self ) };
+   my $lead = log_leader 'debug', $self->name, $self->pid;
+
+   $self->log->debug( "${lead}Starting ".$self->description );
+
+   my $cb = $self->capture_weakself( $self->code );
 
    $self->loop->watch_time( $self->pid, $cb, $self->interval );
-   $self->_set_is_running( TRUE );
-   return;
+   return TRUE;
 }
 
 sub stop {
    my $self = shift;
 
-   $self->is_running or return FALSE; $self->_set_is_running( FALSE );
+   $self->is_running or return; $self->_set_is_running( FALSE );
 
    my $lead = log_leader 'debug', $self->name, $self->pid;
 
    $self->log->debug( "${lead}Stopping ".$self->description );
    $self->loop->unwatch_time( $self->pid );
-   return;
+   return TRUE;
 }
 
 1;

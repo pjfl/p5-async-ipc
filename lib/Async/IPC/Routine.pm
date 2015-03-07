@@ -33,17 +33,22 @@ my $_call_handler = sub {
       $call_ch->start( 'read' ); $return_ch and $return_ch->start( 'write' );
 
       while (1) {
-         try {
-            my $param = $call_ch->recv || [ $self->pid, {} ];
-            my $rv    = $code->( @{ $param } );
+         my $param;
 
-            $return_ch and $return_ch->send( [ $param->[ 0 ], $rv ] );
+         try {
+            if ($param = $call_ch->recv) {
+               my $rv = $code->( @{ $param } );
+
+               $return_ch and $return_ch->send( [ $param->[ 0 ], $rv ] );
+            }
          }
          catch {
-            $self->log->error( (log_leader 'error', 'EXCODE', $self->pid).$_ );
+            my $lead = log_leader 'error', $self->name, $self->pid;
+
+            $self->log->error( $lead.$_ );
          };
 
-         $max_calls and ++$count >= $max_calls and last;
+         defined $param or last; $max_calls and ++$count >= $max_calls and last;
       }
 
       return;
@@ -62,12 +67,12 @@ around 'BUILDARGS' => sub {
       my $v = delete $args->{ $k }; defined $v and $attr->{ $k } = $v;
    }
 
-   $args->{on_recv} and $args->{return_ch} = Async::IPC::Channel->new
+   $args->{on_return} and $args->{return_ch} = Async::IPC::Channel->new
       ( builder     => $attr->{builder},
         description => $attr->{description}.' return channel',
         loop        => $attr->{loop},
         name        => $attr->{name}.'_RETN_CH',
-        on_recv     => delete $args->{on_recv},
+        on_recv     => delete $args->{on_return},
         read_mode   => 'async', );
    $args->{call_ch} = Async::IPC::Channel->new
       ( builder     => $attr->{builder},
@@ -90,9 +95,7 @@ sub DEMOLISH {
 
 # Public methods
 sub call {
-   my ($self, @args) = @_;
-
-   $self->is_running or return; $args[ 0 ] ||= bson64id;
+   my ($self, @args) = @_; $self->is_running or return; $args[ 0 ] ||= bson64id;
 
    return $self->child->send( @args );
 }
@@ -114,10 +117,8 @@ sub stop {
 
    $self->is_running or return; $self->_set_is_running( FALSE );
 
-   my $pid  = $self->child->pid; $self->child->stop;
-
-   $pid and $self->loop->watch_child( 0, sub { $pid } );
-   return TRUE;
+   $self->child->stop;
+   return;
 }
 
 1;

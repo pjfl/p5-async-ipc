@@ -7,7 +7,8 @@ use Class::Usul::Functions qw( sum );
 use_ok 'Async::IPC';
 
 my $prog        =  Class::Usul::Programs->new
-   (  config    => { appclass => 'Class::Usul', tempdir => 't' }, noask => 1, );
+   (  config    => { appclass => 'Class::Usul', tempdir => 't' },
+      debug     => 1, noask => 1, );
 my $factory     =  Async::IPC->new( builder => $prog );
 my $loop        =  $factory->loop;
 my $log         =  $prog->log;
@@ -16,11 +17,12 @@ my $max_calls   =  10;
 my $results     =  {};
 my $function    =  $factory->new_notifier
    (  code      => sub { shift; sum @_ },
-      desc      => 'description',
-      max_calls => $max_calls,
-      name      => 'key',
-      on_exit   => sub { $loop->stop },
-      on_return => sub { $results->{ $_[ 0 ] } = $_[ 1 ] },
+      desc      => 'the test function notifier',
+      name      => 'function_test',
+      on_return => sub {
+         shift; $results->{ $_[ 0 ]->[ 0 ] } = $_[ 0 ]->[ 1 ];
+         my $count = () = keys %{ $results };
+         $count == $max_calls and $loop->stop },
       type      => 'function' );
 
 for (my $i = 0; $i < $max_calls; $i++) {
@@ -43,11 +45,12 @@ $max_calls   =  11;
 $results     =  {};
 $function    =  $factory->new_notifier
    (  code        => sub { shift; sum @_ },
-      desc        => 'description',
-      key         => 'key',
+      desc        => 'the test function notifier',
       max_workers => 3,
+      name        => 'function_test',
       on_return   => sub {
-         $results->{ $_[ 0 ] } = $_[ 1 ]; my $count = () = keys %{ $results };
+         shift; $results->{ $_[ 0 ]->[ 0 ] } = $_[ 0 ]->[ 1 ];
+         my $count = () = keys %{ $results };
          $count == $max_calls and $loop->stop },
       type        => 'function' );
 

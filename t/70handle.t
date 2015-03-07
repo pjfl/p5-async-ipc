@@ -24,14 +24,7 @@ my $args = { builder     => $prog,
 
 ok exception { Async::IPC::Handle->new( %{ $args } ) }, 'Not a filehandle';
 
-sub handle_pair {
-   my $pair = nonblocking_write_pipe_pair;
-   my $rdr  = IO::Handle->new_from_fd( $pair->[ 0 ], 'r' );
-   my $wtr  = IO::Handle->new_from_fd( $pair->[ 1 ], 'w' );
-   return [ $rdr, $wtr ];
-}
-
-my ($rdr, $wtr) = @{ handle_pair() };
+my ($rdr, $wtr) = @{ nonblocking_write_pipe_pair() };
 
 my $readready = 0; my @rrargs; delete $args->{handle};
 
@@ -57,13 +50,12 @@ $rdr->getline; $readready = 0;
 ok exception { $handle->want_writeready( 1 ); },
    'Setting want_writeready with write_handle == undef dies';
 
-$handle->close; ($rdr, $wtr) = @{ handle_pair() };
+$handle->close; ($rdr, $wtr) = @{ nonblocking_write_pipe_pair() };
 
 my $writeready = 0; my @wrargs;
 
 delete $args->{read_handle}; delete $args->{on_read_ready};
 
-#$args->{read_handle   } = $rdr;
 $args->{write_handle  } = $wtr;
 $args->{on_write_ready} = sub { @wrargs = @_; $writeready = 1 };
 
@@ -75,9 +67,9 @@ is $handle->write_handle, $wtr, 'Write handle is right handle';
 is $handle->read_handle, undef, 'Read handle undefined';
 ok $handle->want_writeready, 'Want writeready true';
 is $writeready, 0, 'Writeready while idle';
-
-$handle->want_writeready( 1 ); $loop->once;
-
+$loop->once;
+$handle->want_writeready( 1 );
+$loop->once;
 is $writeready, 1, 'Writeready while writeable';
 is $wrargs[ 0 ], $handle, 'Write ready args while writeable';
 

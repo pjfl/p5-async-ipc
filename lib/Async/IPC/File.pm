@@ -6,7 +6,7 @@ use Moo;
 use Class::Usul::Constants     qw( TRUE );
 use File::DataClass::Constants qw( STAT_FIELDS );
 use File::DataClass::IO        qw( io );
-use File::DataClass::Types     qw( ArrayRef HashRef Maybe Path );
+use File::DataClass::Types     qw( HashRef Maybe Path );
 use Scalar::Util               qw( blessed );
 
 extends q(Async::IPC::Periodical);
@@ -33,44 +33,42 @@ my $_maybe_invoke_event = sub {
 };
 
 my $_call_handler = sub {
-   return sub {
-      my $self = shift; my $old = $self->last_stat; my $new = $self->path->stat;
+   my $self = shift; my $old = $self->last_stat; my $new = $self->path->stat;
 
-      not defined $old and not defined $new and return;
+   not defined $old and not defined $new and return;
 
-      if (defined $old and not defined $new) { # Path deleted
-         $self->$_maybe_invoke_event( 'on_stat_changed', $old );
-         $self->last_stat( undef );
-         return;
-      }
-
-      unless (defined $old) { # Watch for the path to be created
-         $self->$_maybe_invoke_event( 'on_stat_changed', undef, $new );
-         $self->last_stat( $new );
-         return;
-      }
-
-      my $any_change;
-
-      if ($old->{device} != $new->{device} or $old->{inode} != $new->{inode}) {
-         $self->$_maybe_invoke_event( 'on_devino_changed', $old, $new );
-         $any_change++;
-      }
-
-      for my $stat (@{ $_stat_fields->() }) {
-         $old->{ $stat } == $new->{ $stat } and next; $any_change++;
-
-         $self->$_maybe_invoke_event
-            ( "on_${stat}_changed", $old->{ $stat }, $new->{ $stat } );
-      }
-
-      if ($any_change) {
-         $self->$_maybe_invoke_event( 'on_stat_changed', $old, $new );
-         $self->last_stat( $new );
-      }
-
+   if (defined $old and not defined $new) { # Path deleted
+      $self->$_maybe_invoke_event( 'on_stat_changed', $old );
+      $self->last_stat( undef );
       return;
-   };
+   }
+
+   unless (defined $old) { # Watch for the path to be created
+      $self->$_maybe_invoke_event( 'on_stat_changed', undef, $new );
+      $self->last_stat( $new );
+      return;
+   }
+
+   my $any_change;
+
+   if ($old->{device} != $new->{device} or $old->{inode} != $new->{inode}) {
+      $self->$_maybe_invoke_event( 'on_devino_changed', $old, $new );
+      $any_change++;
+   }
+
+   for my $stat (@{ $_stat_fields->() }) {
+      $old->{ $stat } == $new->{ $stat } and next; $any_change++;
+
+      $self->$_maybe_invoke_event
+         ( "on_${stat}_changed", $old->{ $stat }, $new->{ $stat } );
+   }
+
+   if ($any_change) {
+      $self->$_maybe_invoke_event( 'on_stat_changed', $old, $new );
+      $self->last_stat( $new );
+   }
+
+   return;
 };
 
 around 'BUILDARGS' => sub {
@@ -92,7 +90,7 @@ around 'BUILDARGS' => sub {
    }
 
    $path = $attr->{path} and $attr->{last_stat} = $path->stat;
-   $attr->{code} = $_call_handler->();
+   $attr->{code} = $_call_handler;
 
    return $attr;
 };

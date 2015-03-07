@@ -3,14 +3,13 @@ package Async::IPC::Channel;
 use namespace::autoclean;
 
 use Moo;
-use Async::IPC::Functions  qw( log_leader read_exactly recv_arg_error );
+use Async::IPC::Functions  qw( log_leader read_error read_exactly );
 use Async::IPC::Stream;
 use Class::Usul::Constants qw( FALSE NUL TRUE );
 use Class::Usul::Functions qw( ensure_class_loaded nonblocking_write_pipe_pair
                                throw );
 use Class::Usul::Types     qw( ArrayRef CodeRef FileHandle Maybe Object );
 use English                qw( -no_match_vars );
-use IO::Handle;
 use Type::Utils            qw( enum );
 
 extends q(Async::IPC::Base);
@@ -82,12 +81,11 @@ my $_on_stream_read = sub {
 
    substr( ${ $buf_ref }, 0, 4 + $len) = NUL;
 
-   if (my $on_result = shift @{ $self->result_queue }) {
-      $on_result->( $self, 'recv', $record );
-   }
-   else { $self->invoke_event( 'on_recv', $record ) }
+   my $result = shift @{ $self->result_queue };
 
-   return TRUE;
+   $result and return $result->( $self, 'recv', $record );
+
+   return $self->invoke_event( 'on_recv', $record );
 };
 
 my $_recv_async = sub {
@@ -102,16 +100,16 @@ my $_recv_async = sub {
       elsif ($type eq 'eof' ) { $on_eof  and $on_eof->( $self ) }
    };
 
-   return;
+   return TRUE;
 };
 
 my $_recv_sync = sub {
    my $self = shift;
    my $red  = read_exactly $self->read_handle, my $len, 4; # Block here
 
-   recv_arg_error $self->log, $self->pid, $red and return;
+   read_error $self, $red and return;
    $red = read_exactly $self->read_handle, my $bytes, unpack 'I', $len;
-   recv_arg_error $self->log, $self->pid, $red and return;
+   read_error $self, $red and return;
 
    return $self->decode->( $bytes );
 };
@@ -216,7 +214,7 @@ sub start {
 
    if    ($dirn eq 'read' ) { $self->$_maybe_close_write_handle }
    elsif ($dirn eq 'write') { $self->$_maybe_close_read_handle  }
-   else { throw 'Must start either read or write' }
+   else { throw 'A channel must start either read or write' }
 
    $self->_set_pid( $PID );
    return;
@@ -251,11 +249,25 @@ Defines the following attributes;
 
 =item C<codec>
 
+=item C<decode>
+
+=item C<encode>
+
 =item C<on_eof>
 
 =item C<on_recv>
 
+=item C<pair>
+
+=item C<read_handle>
+
+=item C<read_mode>
+
 =item C<result_queue>
+
+=item C<stream>
+
+=item C<write_handle>
 
 =item C<write_mode>
 
@@ -263,19 +275,27 @@ Defines the following attributes;
 
 =head1 Subroutines/Methods
 
+=head2 C<BUILD>
+
+=head2 C<DEMOLISH>
+
+=head2 C<close>
+
 =head2 C<recv>
 
 =head2 C<send>
 
 =head2 C<start>
 
-=head2 C<close>
-
 =head1 Diagnostics
+
+None
 
 =head1 Dependencies
 
 =over 3
+
+=item L<Async::IPC::Base>
 
 =item L<Class::Usul>
 

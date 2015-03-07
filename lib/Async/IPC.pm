@@ -47,15 +47,11 @@ sub new_notifier {
 
    ensure_class_loaded $class;
 
-   my $notifier = $class->new( builder     => $self->_usul,
-                               description => $desc,
-                               loop        => $self->loop,
-                               name        => $name,
-                               on_exit     => $on_exit, %p, );
-
-   $desc = $notifier->description;
-   $logger->( $log_level, $notifier->pid, "Started ${desc}" );
-   return $notifier;
+   return $class->new( builder     => $self->_usul,
+                       description => $desc,
+                       loop        => $self->loop,
+                       name        => $name,
+                       on_exit     => $on_exit, %p, );
 }
 
 1;
@@ -79,7 +75,7 @@ Async::IPC - Asyncronous inter process communication
    my $notifier = $factory->new_notifier
       (  code => sub { ... code to run in a child process ... },
          desc => 'description used by the logger',
-         key  => 'logger key used to identify a log entry',
+         name => 'logger key used to identify a log entry',
          type => 'routine' );
 
 =head1 Description
@@ -116,9 +112,21 @@ class. The notifier types and their classes are;
 
 =over 3
 
+=item C<channel>
+
+An instance of L<Async::IPC::Channel>
+
+=item C<file>
+
+An instance of L<Async::IPC::File>
+
 =item C<function>
 
 An instance of L<Async::IPC::Function>
+
+=item C<handle>
+
+An instance of L<Async::IPC::Handle>
 
 =item C<periodical>
 
@@ -135,6 +143,10 @@ An instance of L<Async::IPC::Routine>
 =item C<semaphore>
 
 An instance of L<Async::IPC::Semaphore>
+
+=item C<stream>
+
+An instance of L<Async::IPC::Stream>
 
 =back
 

@@ -4,22 +4,16 @@ use feature 'state';
 use namespace::autoclean;
 
 use Moo;
-use Async::IPC::Functions  qw( log_leader read_exactly
-                               recv_arg_error send_msg );
-use Async::IPC::Process;
+use Async::IPC::Functions  qw( log_leader );
+use Async::IPC::Routine;
 use Class::Usul::Constants qw( FALSE OK TRUE );
-use Class::Usul::Functions qw( bson64id nonblocking_write_pipe_pair );
+use Class::Usul::Functions qw( bson64id );
 use Class::Usul::Types     qw( ArrayRef Bool HashRef NonZeroPositiveInt
                                PositiveInt SimpleStr );
-use English                qw( -no_match_vars );
-use Storable               qw( thaw );
-use Try::Tiny;
 
 extends q(Async::IPC::Base);
 
 # Public attributes
-has 'channels'       => is => 'ro',  isa => SimpleStr, default => 'i';
-
 has 'is_running'     => is => 'rwp', isa => Bool, default => TRUE;
 
 has 'max_calls'      => is => 'ro',  isa => PositiveInt, default => 0;
@@ -32,53 +26,16 @@ has 'worker_index'   => is => 'ro',  isa => ArrayRef, default => sub { [] };
 
 has 'worker_objects' => is => 'ro',  isa => HashRef,  default => sub { {} };
 
-# Private functions
-my $_call_handler = sub {
-   my $args = shift;
-   my $code = $args->{code};
-   my $rdr  = $args->{call_pipe} ? $args->{call_pipe}->[ 0 ] : FALSE;
-   my $wtr  = $args->{retn_pipe} ? $args->{retn_pipe}->[ 1 ] : FALSE;
-
-   return sub {
-      my $self = shift;
-      my $lead = log_leader 'error', 'EXCODE', $PID;
-      my $log  = $self->log; my $max = $self->max_calls; my $count = 0;
-
-      while (not $max or $count++ < $max) {
-         my $red = read_exactly $rdr, my $buf_len, 4; # Block here
-
-         recv_arg_error $log, $PID, $red and return;
-         $red = read_exactly $rdr, my $buf, unpack 'I', $buf_len;
-         recv_arg_error $log, $PID, $red and return;
-
-         try {
-            my $param = $buf ? thaw $buf : [ $PID, {} ];
-            my $rv    = $code->( @{ $param } );
-
-            $wtr and send_msg $wtr, $log, 'SENDRV', $param->[ 0 ], $rv;
-         }
-         catch { $log->error( $lead.$_ ) };
-      }
-
-      return;
-   }
-};
-
 # Private methods
 my $_new_worker = sub {
    my ($self, $index) = @_; my $args = { %{ $self->worker_args } };
 
    my $on_exit = $args->{on_exit}; my $workers = $self->worker_objects;
 
-   $self->channels =~ m{ i }mx
-      and $args->{call_pipe} = nonblocking_write_pipe_pair;
-  ($self->channels =~ m{ o }mx or exists $args->{on_return})
-      and $args->{retn_pipe} = nonblocking_write_pipe_pair;
-   $args->{code} = $_call_handler->( $args );
    $args->{description} .= " ${index}";
    $args->{on_exit} = sub { delete $workers->{ $_[ 0 ] }; $on_exit->( @_ ) };
 
-   my $worker = Async::IPC::Process->new( $args ); my $pid = $worker->pid;
+   my $worker = Async::IPC::Routine->new( $args ); my $pid = $worker->pid;
 
    $workers->{ $pid } = $worker; $self->worker_index->[ $index ] = $pid;
 
@@ -103,15 +60,15 @@ my $_next_worker = sub {
 
 # Construction
 around 'BUILDARGS' => sub {
-   my ($orig, $self, @args) = @_; my $attr = {};
+   my ($orig, $self, @args) = @_; my $args = $orig->( $self, @args );
 
-   my $args = $orig->( $self, @args ); $args->{description} .= ' worker';
+   my $attr = {}; $args->{description} .= ' worker';
 
    for my $k ( qw( builder description loop max_calls ) ) {
       defined $args->{ $k } and $attr->{ $k } = $args->{ $k };
    }
 
-   for my $k ( qw( autostart channels max_workers name ) ) {
+   for my $k ( qw( autostart max_workers name ) ) {
       my $v = delete $args->{ $k }; defined $v and $attr->{ $k } = $v;
    }
 
@@ -121,28 +78,34 @@ around 'BUILDARGS' => sub {
 };
 
 sub BUILD {
-   my $self = shift; $self->autostart or return;
-
-   $self->$_next_worker for (0 .. $self->max_workers - 1);
-
-   return;
+   my $self = shift; $self->autostart and $self->start; return;
 }
 
-sub _build_pid {
-   return $_[ 0 ]->loop->uuid;
+sub DEMOLISH {
+   my $self = shift; $self->stop; return;
 }
 
 # Public methods
 sub call {
-   my ($self, @args) = @_; $self->is_running or return FALSE;
+   my ($self, @args) = @_; $self->is_running or return; $args[ 0 ] ||= bson64id;
 
-   $args[ 0 ] ||= bson64id; return $self->$_next_worker->send( @args );
+   return $self->$_next_worker->call( @args );
 }
 
 sub set_return_callback {
    my ($self, @args) = @_; my $workers = $self->worker_objects;
 
    $workers->{ $_ }->set_return_callback( @args ) for (keys %{ $workers });
+
+   return;
+}
+
+sub start {
+   my $self = shift; my $lead = log_leader 'debug', $self->name, $self->pid;
+
+   $self->log->debug( "${lead}Starting ".$self->description.' pool' );
+
+   $self->$_next_worker for (0 .. $self->max_workers - 1);
 
    return;
 }
@@ -156,11 +119,11 @@ sub stop {
 
    $self->log->debug( "${lead}Stopping ".$self->description.' pool' );
 
-   my $workers = $self->worker_objects; my @pids = keys %{ $workers };
+   my $workers = $self->worker_objects;
 
-   $workers->{ $_ }->stop for (@pids);
+   $workers->{ $_ }->stop for (keys %{ $workers });
 
-   $self->loop->watch_child( 0, sub { @pids } ); return;
+   return;
 }
 
 1;

@@ -39,7 +39,7 @@ sub capture_weakself {
       'Package [_1] cannot locate method [_2]', [ blessed $self, $code ];
 
    return sub {
-      my $cb = (is_coderef $code) ? $code : $self->$code;
+      $self or return; my $cb = (is_coderef $code) ? $code : $self->$code;
 
       unshift @_, $self; goto &$cb;
    };

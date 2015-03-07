@@ -58,4 +58,4 @@ is $called, 2, 'Stat changed open file handle 2';
 
 done_testing;
 
-$prog->config->logfile->unlink;
+#$prog->config->logfile->unlink;

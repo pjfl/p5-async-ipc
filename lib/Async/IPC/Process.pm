@@ -3,19 +3,18 @@ package Async::IPC::Process;
 use namespace::autoclean;
 
 use Moo;
-use Async::IPC::Functions  qw( log_leader read_exactly recv_rv_error send_msg );
-use Class::Usul::Constants qw( FALSE SPC TRUE );
-use Class::Usul::Functions qw( is_coderef throw );
+use Async::IPC::Functions  qw( log_leader );
+use Class::Usul::Constants qw( FALSE TRUE );
+use Class::Usul::Functions qw( is_coderef );
 use Class::Usul::Types     qw( ArrayRef CodeRef NonEmptySimpleStr
                                Object PositiveInt Undef );
 use English                qw( -no_match_vars );
 use Scalar::Util           qw( weaken );
-use Try::Tiny;
 
 extends q(Async::IPC::Base);
 
 # Public attributes
-has 'call_ch'   => is => 'ro', isa => Object;
+has 'call_ch'   => is => 'ro', isa => Object  | Undef;
 
 has 'code'      => is => 'ro', isa => CodeRef | ArrayRef | NonEmptySimpleStr,
    required     => TRUE;
@@ -24,9 +23,9 @@ has 'max_calls' => is => 'ro', isa => PositiveInt, default => 0;
 
 has 'on_exit'   => is => 'ro', isa => CodeRef | Undef;
 
-has 'on_recv'   => is => 'ro', isa => CodeRef | Undef;
+has 'on_return' => is => 'ro', isa => CodeRef | Undef;
 
-has 'return_ch' => is => 'ro', isa => Object | Undef;
+has 'return_ch' => is => 'ro', isa => Object  | Undef;
 
 # Construction
 sub BUILD {
@@ -39,18 +38,9 @@ sub is_running {
 }
 
 sub send {
-   my $self = shift; return $self->call_ch->send( [ @_ ] );
-}
+   my $self = shift;
 
-sub set_recv_callback {
-   my ($self, $code, $loop) = @_; # TODO: The loop thing
-
-   my $return_ch = $self->return_ch
-      or throw 'Cannot set receiving callback without a return channel';
-
-   $return_ch->recv( on_recv => $code ); $return_ch->start( 'read' );
-
-   return;
+   return $self->call_ch ? $self->call_ch->send( [ @_ ] ) : FALSE;
 }
 
 sub start {
@@ -68,8 +58,12 @@ sub start {
    $self->_set_pid( my $pid = $self->run_cmd( $cmd, $args )->pid );
 
    $self->on_exit and $self->loop->watch_child( $pid, $self->on_exit );
-   $self->on_recv and $self->set_recv_callback( $self->on_recv );
-   $self->call_ch->start( 'write' );
+
+   my $lead = log_leader 'info', $self->name, $pid;
+
+   $self->log->info( "${lead}Started ".$self->description );
+   $self->return_ch and $self->return_ch->start( 'read' );
+   $self->call_ch   and $self->call_ch->start( 'write' );
    return;
 }
 
@@ -117,6 +111,11 @@ Defines the following attributes;
 
 =over 3
 
+=item C<call_ch>
+
+A L<Async::IPC::Channel> object used by the parent to send call arguments to
+the child process
+
 =item C<code>
 
 Required code reference / array reference / non empty simple string to execute
@@ -132,18 +131,14 @@ before terminating. When zero do not terminate
 The code reference to call when the process exits. The factory wraps this
 reference to log when it's called
 
-=item C<on_recv>
+=item C<on_return>
 
 Invoke this callback subroutine when the code reference returns a value
 
-=item C<reader>
+=item C<return_ch>
 
-File handle used by the parent process to read the result back from
-the child
-
-=item C<writer>
-
-File handle used by the parent to send call arguments to the child process
+A L<Async::IPC::Channel> object used by the parent process to read the result
+back from the child
 
 =back
 
