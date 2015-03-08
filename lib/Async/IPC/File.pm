@@ -86,12 +86,11 @@ around 'BUILDARGS' => sub {
 
    if (my $handle = delete $attr->{handle}) {
       blessed $handle or $handle = IO::Handle->new_from_fd( $handle, 'r' );
-      $attr->{path} = io { io_handle => $handle };
+      $attr->{path} = io( { io_handle => $handle, is_open => TRUE } );
    }
 
    $path = $attr->{path} and $attr->{last_stat} = $path->stat;
    $attr->{code} = $_call_handler;
-
    return $attr;
 };
 

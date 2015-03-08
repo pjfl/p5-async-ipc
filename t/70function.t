@@ -40,6 +40,7 @@ for (sort { $a <=> $b } keys %{ $results }) {
 my $count = () = keys %{ $results };
 
 is $count, $max_calls, 'All results present';
+undef $function;
 
 $max_calls   =  11;
 $results     =  {};

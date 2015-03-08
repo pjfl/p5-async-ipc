@@ -8,79 +8,70 @@ use Async::IPC::Functions  qw( log_leader );
 use Async::IPC::Process;
 use Class::Usul::Constants qw( FALSE TRUE );
 use Class::Usul::Functions qw( bson64id );
-use Class::Usul::Types     qw( Bool HashRef Object );
+use Class::Usul::Types     qw( Bool CodeRef HashRef Object PositiveInt Undef );
 use Try::Tiny;
 
 extends q(Async::IPC::Base);
 
-has 'child'      => is => 'lazy', isa => Object,  builder => sub {
-   Async::IPC::Process->new( $_[ 0 ]->child_args ) };
-
-has 'child_args' => is => 'lazy', isa => HashRef, default => sub { {} };
-
-has 'is_running' => is => 'rwp',  isa => Bool,    default => FALSE;
-
 # Private functions
-my $_call_handler = sub {
-   my $args      = shift;
-   my $code      = delete $args->{code};
-   my $call_ch   = $args->{call_ch  };
-   my $return_ch = $args->{return_ch} ? $args->{return_ch} : FALSE;
+my $_build_call_ch = sub {
+   my $self = shift;
 
-   return sub {
-      my $self = shift; my $count = 0; my $max_calls = $self->max_calls;
-
-      $call_ch->start( 'read' ); $return_ch and $return_ch->start( 'write' );
-
-      while (1) {
-         my $param;
-
-         try {
-            if ($param = $call_ch->recv) {
-               my $rv = $code->( @{ $param } );
-
-               $return_ch and $return_ch->send( [ $param->[ 0 ], $rv ] );
-            }
-         }
-         catch {
-            my $lead = log_leader 'error', $self->name, $self->pid;
-
-            $self->log->error( $lead.$_ );
-         };
-
-         defined $param or last; $max_calls and ++$count >= $max_calls and last;
-      }
-
-      return;
-   };
+   return Async::IPC::Channel->new
+      ( builder     => $self->_usul,
+        description => $self->description.' call channel',
+        loop        => $self->loop,
+        name        => $self->name.'_CALL_CH', );
 };
+
+my $_build_child = sub {
+   return Async::IPC::Process->new
+      ( { %{ $_[ 0 ]->child_args }, code => $_[ 0 ]->call_handler } );
+};
+
+my $_build_return_ch = sub {
+   my $self = shift; $self->on_return or return;
+
+   return Async::IPC::Channel->new
+      ( builder     => $self->_usul,
+        description => $self->description.' return channel',
+        loop        => $self->loop,
+        name        => $self->name.'_RETN_CH',
+        on_recv     => $self->on_return,
+        read_mode   => 'async', );
+};
+
+has 'call_ch'    => is => 'lazy', isa => Object,  builder  => $_build_call_ch;
+
+has 'child'      => is => 'lazy', isa => Object,  builder  => $_build_child;
+
+has 'child_args' => is => 'ro',   isa => HashRef, builder  => sub { {} };
+
+has 'code'       => is => 'ro',   isa => CodeRef, required => TRUE;
+
+has 'is_running' => is => 'rwp',  isa => Bool,    default  => FALSE;
+
+has 'max_calls'  => is => 'ro',   isa => PositiveInt, default => 0;
+
+has 'on_return'  => is => 'ro',   isa => CodeRef | Undef;
+
+has 'return_ch'  => is => 'lazy', isa => Object  | Undef,
+   builder       => $_build_return_ch;
 
 # Construction
 around 'BUILDARGS' => sub {
-   my ($orig, $self, @args) = @_; my $args = $orig->( $self, @args ); my $attr;
+   my ($orig, $self, @args) = @_; my $attr = $orig->( $self, @args );
+
+   my $args = { autostart => FALSE };
 
    for my $k ( qw( builder description loop name ) ) {
-      $attr->{ $k } = $args->{ $k };
+      $args->{ $k } = $attr->{ $k };
    }
 
-   for my $k ( qw( autostart ) ) {
-      my $v = delete $args->{ $k }; defined $v and $attr->{ $k } = $v;
+   for my $k ( qw( on_exit ) ) {
+      my $v = delete $attr->{ $k }; defined $v and $args->{ $k } = $v;
    }
 
-   $args->{on_return} and $args->{return_ch} = Async::IPC::Channel->new
-      ( builder     => $attr->{builder},
-        description => $attr->{description}.' return channel',
-        loop        => $attr->{loop},
-        name        => $attr->{name}.'_RETN_CH',
-        on_recv     => delete $args->{on_return},
-        read_mode   => 'async', );
-   $args->{call_ch} = Async::IPC::Channel->new
-      ( builder     => $attr->{builder},
-        description => $attr->{description}.' call channel',
-        loop        => $attr->{loop},
-        name        => $attr->{name}.'_CALL_CH', );
-   $args->{code      } = $_call_handler->( $args );
-   $args->{autostart } = FALSE;
    $attr->{child_args} = $args;
    return $attr;
 };
@@ -97,11 +88,44 @@ sub DEMOLISH {
 sub call {
    my ($self, @args) = @_; $self->is_running or return; $args[ 0 ] ||= bson64id;
 
-   return $self->child->send( @args );
+   return $self->call_ch ? $self->call_ch->send( [ @args ] ) : undef;
+}
+
+sub call_handler {
+   my $self      = shift;
+   my $code      = $self->code;
+   my $max_calls = $self->max_calls;
+   my $call_ch   = $self->call_ch;
+   my $return_ch = $self->return_ch ? $self->return_ch : FALSE;
+
+   return sub {
+      my $self = shift; my $count = 0; my $log = $self->log;
+
+      $call_ch->start( 'read' ); $return_ch and $return_ch->start( 'write' );
+
+      while (1) {
+         my $param;
+
+         try {
+            if ($param = $call_ch->recv) {
+               my $rv = $code->( @{ $param } );
+
+               $return_ch and $return_ch->send( [ $param->[ 0 ], $rv ] );
+            }
+         }
+         catch {
+            $log->error( (log_leader 'error', $self->name, $self->pid).$_ );
+         };
+
+         defined $param or last; $max_calls and ++$count >= $max_calls and last;
+      }
+
+      return;
+   };
 }
 
 sub pid {
-   my $self = shift; return $self->is_running ? $self->child->pid : FALSE;
+   my $self = shift; return $self->is_running ? $self->child->pid : undef;
 }
 
 sub start {
@@ -109,7 +133,10 @@ sub start {
 
    $self->is_running and return; $self->_set_is_running( TRUE );
 
-   return $self->child->start;
+   $self->child->start;
+   $self->return_ch and $self->return_ch->start( 'read' );
+   $self->call_ch   and $self->call_ch->start( 'write' );
+   return TRUE;
 }
 
 sub stop {
@@ -118,7 +145,7 @@ sub stop {
    $self->is_running or return; $self->_set_is_running( FALSE );
 
    $self->child->stop;
-   return;
+   return TRUE;
 }
 
 1;
@@ -157,6 +184,11 @@ Defines the following attributes;
 
 =over 3
 
+=item C<call_ch>
+
+A L<Async::IPC::Channel> object used by the parent to send call arguments to
+the child process
+
 =item C<child>
 
 The child process object reference. An instance of L<Async::IPC::Process>
@@ -168,6 +200,20 @@ A hash reference passed to the child process constructor
 =item C<is_running>
 
 Boolean defaults to true. Set to false when L</stop> is called
+
+=item C<max_calls>
+
+Positive integer defaults to zero. The maximum number of calls to execute
+before terminating. When zero do not terminate
+
+=item C<on_return>
+
+Invoke this callback subroutine when the code reference returns a value
+
+=item C<return_ch>
+
+A L<Async::IPC::Channel> object used by the parent process to read the result
+back from the child
 
 =back
 

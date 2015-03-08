@@ -6,26 +6,17 @@ use Moo;
 use Async::IPC::Functions  qw( log_leader );
 use Class::Usul::Constants qw( FALSE TRUE );
 use Class::Usul::Functions qw( is_coderef );
-use Class::Usul::Types     qw( ArrayRef CodeRef NonEmptySimpleStr
-                               Object PositiveInt Undef );
+use Class::Usul::Types     qw( ArrayRef CodeRef NonEmptySimpleStr Undef );
 use English                qw( -no_match_vars );
 use Scalar::Util           qw( weaken );
 
 extends q(Async::IPC::Base);
 
 # Public attributes
-has 'call_ch'   => is => 'ro', isa => Object  | Undef;
+has 'code'    => is => 'ro', isa => CodeRef | ArrayRef | NonEmptySimpleStr,
+   required   => TRUE;
 
-has 'code'      => is => 'ro', isa => CodeRef | ArrayRef | NonEmptySimpleStr,
-   required     => TRUE;
-
-has 'max_calls' => is => 'ro', isa => PositiveInt, default => 0;
-
-has 'on_exit'   => is => 'ro', isa => CodeRef | Undef;
-
-has 'on_return' => is => 'ro', isa => CodeRef | Undef;
-
-has 'return_ch' => is => 'ro', isa => Object  | Undef;
+has 'on_exit' => is => 'ro', isa => CodeRef | Undef;
 
 # Construction
 sub BUILD {
@@ -35,12 +26,6 @@ sub BUILD {
 # Public methods
 sub is_running {
    my $self = shift; return $self->pid ? CORE::kill 0, $self->pid : FALSE;
-}
-
-sub send {
-   my $self = shift;
-
-   return $self->call_ch ? $self->call_ch->send( [ @_ ] ) : FALSE;
 }
 
 sub start {
@@ -62,8 +47,6 @@ sub start {
    my $lead = log_leader 'info', $self->name, $pid;
 
    $self->log->info( "${lead}Started ".$self->description );
-   $self->return_ch and $self->return_ch->start( 'read' );
-   $self->call_ch   and $self->call_ch->start( 'write' );
    return;
 }
 
@@ -98,7 +81,7 @@ Async::IPC::Process - Execute a child process with input / output channels
    my $process = $factory->new_notifier
       (  code => sub { ... code to run in a child process ... },
          desc => 'description used by the logger',
-         key  => 'logger key used to identify a log entry',
+         name => 'logger key used to identify a log entry',
          type => 'process', );
 
 =head1 Description
@@ -111,42 +94,19 @@ Defines the following attributes;
 
 =over 3
 
-=item C<call_ch>
-
-A L<Async::IPC::Channel> object used by the parent to send call arguments to
-the child process
-
 =item C<code>
 
 Required code reference / array reference / non empty simple string to execute
 in the child process
-
-=item C<max_calls>
-
-Positive integer defaults to zero. The maximum number of calls to execute
-before terminating. When zero do not terminate
 
 =item C<on_exit>
 
 The code reference to call when the process exits. The factory wraps this
 reference to log when it's called
 
-=item C<on_return>
-
-Invoke this callback subroutine when the code reference returns a value
-
-=item C<return_ch>
-
-A L<Async::IPC::Channel> object used by the parent process to read the result
-back from the child
-
 =back
 
 =head1 Subroutines/Methods
-
-=head2 C<BUILDARGS>
-
-Selects the parents file handles for communication with the child process
 
 =head2 C<BUILD>
 
@@ -158,18 +118,11 @@ Starts the child process, sets on exits and return callbacks
 
 Returns true if the child process is running
 
-=head2 C<send>
+=head2 C<start>
 
-   $bool = $process->send( @args );
+   $process->start;
 
-Returns true on success, false otherwise. Sends arguments to the child process
-
-=head2 C<set_recv_callback>
-
-   $process->set_recv_callback( $code, $loop );
-
-Sets the receiving callback to the specified code reference. If C<$loop>
-is specified use that loop object as opposed to ours
+Start the child process
 
 =head2 C<stop>
 

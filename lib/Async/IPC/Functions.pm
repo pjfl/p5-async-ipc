@@ -8,7 +8,7 @@ use Class::Usul::Functions qw( pad );
 use English                qw( -no_match_vars );
 use Storable               qw( nfreeze );
 
-our @EXPORT_OK = ( qw( log_leader read_error read_exactly send_msg terminate ));
+our @EXPORT_OK = ( qw( log_leader read_error read_exactly terminate ));
 
 # Private functions
 my $_padid = sub {
@@ -19,11 +19,6 @@ my $_padkey = sub {
    my ($level, $key) = @_; my $w = 11 - length $level; $w < 1 and $w = 1;
 
    return pad $key, $w, SPC, 'left';
-};
-
-my $_recv_hndlr = sub {
-   my ($key, $log, $id, $red) = @_;
-
 };
 
 # Public functions
@@ -43,7 +38,7 @@ sub read_error ($$) {
    }
 
    unless (length $red) {
-      $log->info( log_leader( 'info', $name, $pid ).'EOF' ); return TRUE;
+      $log->debug( log_leader( 'debug', $name, $pid ).'EOF' ); return TRUE;
    }
 
    return FALSE;
@@ -59,22 +54,6 @@ sub read_exactly ($$$) {
    }
 
    return $_[ 2 ];
-}
-
-sub send_msg ($$$;@) {
-   my ($writer, $log, $key, @args) = @_;
-
-   my $lead = log_leader 'error', $key, $args[ 0 ] ||= $PID;
-
-   $writer or ($log->error( "${lead}No writer" ) and return FALSE);
-
-   my $rec  = nfreeze [ @args ];
-   my $buf  = pack( 'I', length $rec ).$rec;
-   my $len  = $writer->syswrite( $buf, length $buf );
-
-   defined $len or ($log->error( $lead.$OS_ERROR ) and return FALSE);
-
-   return TRUE;
 }
 
 sub terminate ($) {
@@ -134,12 +113,6 @@ call. Returns false otherwise. Logs the error if one occurs
 Returns the number of bytes read from the file handle on success. Returns
 undefined if there is a read error, returns the null string if nothing is read
 The read bytes are appended to the buffer
-
-=head2 C<send_msg>
-
-   $bool = send_message $file_handle, $log_object, $key, @args;
-
-Returns true on success, false otherwise. Sends data to another process
 
 =head2 C<terminate>
 

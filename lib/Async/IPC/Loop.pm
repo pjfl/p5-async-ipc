@@ -27,7 +27,7 @@ sub new {
 
 # Public methods
 sub once {
-   my ($self, $tmout, $cb) = @_;
+   my ($self, $tmout, $cb) = @_; $cb //= sub {};
 
    defined $tmout and my $w = AnyEvent->timer( after => $tmout, cb => $cb );
    AnyEvent->_poll; # Undocumented method
