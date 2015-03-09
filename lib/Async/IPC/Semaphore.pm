@@ -16,51 +16,6 @@ use Try::Tiny;
 extends q(Async::IPC::Routine);
 
 # Private functions
-my $_call_handler = sub {
-   my $args      = shift;
-   my $before    = delete $args->{before};
-   my $_code     = delete $args->{code  };
-   my $after     = delete $args->{after };
-   my $lock      = $args->{builder}->lock;
-   my $call_ch   = $args->{call_ch  } ? $args->{call_ch  } : FALSE;
-   my $return_ch = $args->{return_ch} ? $args->{return_ch} : FALSE;
-   my $code      = sub { $lock->reset( k => $_[ 0 ] ); $_code->( @_ ) };
-
-   return sub {
-      my $self  = shift;
-      my $count = 0; my $lead = log_leader 'error', 'EXCODE', $PID;
-      my $log   = $self->log; my $max_calls = $self->max_calls;
-
-      $self->_set_loop( my $loop = Async::IPC::Loop->new );
-      $before and $before->( $self );
-
-      $rdr and $loop->watch_read_handle( $rdr, sub {
-         my $param;
-
-         try {
-            if ($param = $call_ch->recv) {
-               my $rv = $code->( @{ $param } );
-
-               $return_ch and $return_ch->send( [ $param->[ 0 ], $rv ] );
-            }
-         }
-         catch {
-            my $lead = log_leader 'error', $self->name, $self->pid;
-
-            $self->log->error( $lead.$_ );
-         };
-
-         defined $param or terminate $loop;
-         $max_calls and ++$count >= $max_calls and terminate $loop;
-         return;
-      } );
-
-      $loop->watch_signal( TERM => sub { terminate $loop } );
-      $loop->start; $after and $after->( $self );
-      return;
-   };
-};
-
 # Construction
 around 'BUILDARGS' => sub {
    my ($orig, $self, @args) = @_; my $args = $orig->( $self, @args ); my $attr;
@@ -80,12 +35,56 @@ around 'BUILDARGS' => sub {
    return $attr;
 };
 
+sub call_handler {
+   my $self      = shift;
+   my $before    = delete $self->before;
+   my $_code     = delete $self->code;
+   my $after     = delete $self->after;
+   my $lock      = $self->_usul->lock;
+   my $call_ch   = $self->call_ch   ? $self->call_ch   : FALSE;
+   my $return_ch = $self->return_ch ? $self->return_ch : FALSE;
+   my $code      = sub { $lock->reset( k => $_[ 0 ] ); $_code->( @_ ) };
+
+   return sub {
+      my $self = shift; my $count = 0; my $log = $self->log;
+
+      my $max_calls = $self->max_calls;
+
+      $self->_set_loop( my $loop = Async::IPC::Loop->new );
+      $before and $before->( $self );
+
+      $rdr and $loop->watch_read_handle( $rdr, sub {
+         my $param;
+
+         try {
+            if ($param = $call_ch->recv) {
+               my $rv = $code->( @{ $param } );
+
+               $return_ch and $return_ch->send( [ $param->[ 0 ], $rv ] );
+            }
+         }
+         catch {
+            $self->log->error
+               ( (log_leader 'error', $self->name, $self->pid).$_ );
+         };
+
+         defined $param or terminate $loop;
+         $max_calls and ++$count >= $max_calls and terminate $loop;
+         return;
+      } );
+
+      $loop->watch_signal( TERM => sub { terminate $loop } );
+      $loop->start; $after and $after->( $self );
+      return;
+   };
+};
+
 sub raise {
-   my $self = shift; $self->is_running or return FALSE; my $key = refaddr $self;
+   my $self = shift; $self->is_running or return; my $key = refaddr $self;
 
    $self->lock->set( k => $key, async => TRUE ) or return TRUE;
 
-   return $self->child->send( $key );
+   return $self->call( $key );
 }
 
 1;

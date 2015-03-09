@@ -439,12 +439,12 @@ sub write {
       1 while (not $self->$_is_empty and $self->$_flush_one_write);
 
       if ($self->$_is_empty) {
-         $self->want_writeready_for_write( FALSE ); return;
+         $self->want_writeready_for_write( FALSE ); return TRUE;
       }
    }
 
    $self->want_writeready_for_write( TRUE );
-   return;
+   return TRUE;
 }
 
 package Async::IPC::Writer;
