@@ -4,59 +4,118 @@ use namespace::autoclean;
 
 use Moo;
 use Async::IPC::Channel;
-use Async::IPC::Functions  qw( log_leader );
+use Async::IPC::Functions  qw( log_leader terminate );
 use Async::IPC::Process;
-use Class::Usul::Constants qw( FALSE TRUE );
-use Class::Usul::Functions qw( bson64id );
-use Class::Usul::Types     qw( Bool CodeRef HashRef Object PositiveInt Undef );
+use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE TRUE );
+use Class::Usul::Functions qw( bson64id is_arrayref throw );
+use Class::Usul::Types     qw( ArrayRef Bool CodeRef
+                               HashRef Object PositiveInt );
 use Try::Tiny;
+use Unexpected::Functions  qw( Unspecified );
 
 extends q(Async::IPC::Base);
 
 # Private functions
-my $_build_call_ch = sub {
-   my $self = shift;
+my $_start_channels = sub {
+   my ($ch, $mode) = @_; my $i = 0;
+
+   $ch->[ $i++ ]->start( $mode ) while (defined $ch->[ $i ]);
+
+   return;
+};
+
+# Construction methods
+my $_build_channel = sub {
+   my ($self, $dirn, $channel_no, %args) = @_;
 
    return Async::IPC::Channel->new
       ( builder     => $self->_usul,
-        description => $self->description.' call channel',
+        description => $self->description." ${dirn} channel ${channel_no}",
         loop        => $self->loop,
-        name        => $self->name.'_CALL_CH', );
+        name        => $self->name.'_'.(uc $dirn)."_CH${channel_no}",
+        %args );
+};
+
+my $_build_async_recv_handler = sub {
+   my ($self, $i, $code) = @_; my $count = 0;
+
+   my $max_calls = $self->max_calls; my $return_ch = $self->return_chs->[ $i ];
+
+   return sub {
+      my ($self, $param) = @_;
+
+      try {
+         my $rv = $code->( @{ $param } );
+
+         $return_ch and $return_ch->send( [ $param->[ 0 ], $rv ] );
+      }
+      catch {
+         $self->log->error( (log_leader 'error', $self->name, $self->pid).$_ );
+      };
+
+      $max_calls and ++$count >= $max_calls and terminate $self->loop;
+   };
+};
+
+my $_build_call_chs = sub {
+   my $self = shift; my %args = (); my $channels = []; my $i = 0;
+
+   $args{read_mode} = (defined $self->on_recv->[ 1 ]) ? 'async' : 'sync';
+
+   while (defined (my $code = $self->on_recv->[ $i ])) {
+      if ($args{read_mode} eq 'async') {
+         $args{on_eof } = sub { terminate $_[ 0 ]->loop };
+         $args{on_recv} = $self->$_build_async_recv_handler( $i, $code );
+      }
+
+      push @{ $channels }, $self->$_build_channel( 'call', $i, %args );
+      delete $args{on_eof}; delete $args{on_recv}; $i++;
+   }
+
+   return $channels;
 };
 
 my $_build_child = sub {
+   my $self = shift;
+
    return Async::IPC::Process->new
-      ( { %{ $_[ 0 ]->child_args }, code => $_[ 0 ]->call_handler } );
+      ( { %{ $self->child_args },
+          code => (defined $self->on_recv->[ 1 ])
+               ?  $self->async_call_handler : $self->sync_call_handler } );
 };
 
-my $_build_return_ch = sub {
-   my $self = shift; $self->on_return or return;
+my $_build_return_chs = sub {
+   my $self = shift; my %args = (); my $channels = []; my $i = 0;
 
-   return Async::IPC::Channel->new
-      ( builder     => $self->_usul,
-        description => $self->description.' return channel',
-        loop        => $self->loop,
-        name        => $self->name.'_RETN_CH',
-        on_recv     => $self->on_return,
-        read_mode   => 'async', );
+   $self->on_return->[ 0 ] or return; $args{read_mode} = 'async';
+
+   while (defined ($args{on_recv} = $self->on_return->[ $i ])) {
+      push @{ $channels }, $self->$_build_channel( 'return', $i, %args );
+      delete $args{on_recv}; $i++;
+   }
+
+   return $channels;
 };
 
-has 'call_ch'    => is => 'lazy', isa => Object,  builder  => $_build_call_ch;
+has 'call_chs'    => is => 'lazy', isa => ArrayRef[Object],
+   builder       => $_build_call_chs;
 
 has 'child'      => is => 'lazy', isa => Object,  builder  => $_build_child;
 
 has 'child_args' => is => 'ro',   isa => HashRef, builder  => sub { {} };
 
-has 'code'       => is => 'ro',   isa => CodeRef, required => TRUE;
-
 has 'is_running' => is => 'rwp',  isa => Bool,    default  => FALSE;
 
 has 'max_calls'  => is => 'ro',   isa => PositiveInt, default => 0;
 
-has 'on_return'  => is => 'ro',   isa => CodeRef | Undef;
+has 'on_recv'    => is => 'ro',   isa => ArrayRef[CodeRef],
+   builder       => sub { [] };
 
-has 'return_ch'  => is => 'lazy', isa => Object  | Undef,
-   builder       => $_build_return_ch;
+has 'on_return'  => is => 'ro',   isa => ArrayRef[CodeRef],
+   builder       => sub { [] };
+
+has 'return_chs' => is => 'lazy', isa => ArrayRef[Object],
+   builder       => $_build_return_chs;
 
 # Construction
 around 'BUILDARGS' => sub {
@@ -73,11 +132,21 @@ around 'BUILDARGS' => sub {
    }
 
    $attr->{child_args} = $args;
+   exists $attr->{on_recv} and defined $attr->{on_recv}
+      and not is_arrayref $attr->{on_recv}
+      and $attr->{on_recv} = [ $attr->{on_recv} ];
+   exists $attr->{on_return} and defined $attr->{on_return}
+      and not is_arrayref $attr->{on_return}
+      and $attr->{on_return} = [ $attr->{on_return} ];
    return $attr;
 };
 
 sub BUILD {
-   my $self = shift; $self->autostart and $self->start; return;
+   my $self = shift;
+
+   defined $self->on_recv->[ 0 ] or throw Unspecified, [ 'on_recv' ];
+
+   $self->autostart and $self->start; return;
 }
 
 sub DEMOLISH {
@@ -85,32 +154,61 @@ sub DEMOLISH {
 }
 
 # Public methods
-sub call {
-   my ($self, @args) = @_; $self->is_running or return; $args[ 0 ] ||= bson64id;
+sub async_call_handler {
+   my $self       = shift;
+   my $call_chs   = $self->call_chs;
+   my $return_chs = $self->return_chs->[ 0 ] ? $self->return_chs : FALSE;
 
-   return $self->call_ch ? $self->call_ch->send( [ @args ] ) : undef;
+   return sub {
+      my $self = shift; $self->_set_loop( my $loop = Async::IPC::Loop->new );
+
+      $return_chs and $_start_channels->( $return_chs, 'write' );
+      $_start_channels->( $call_chs, 'read' );
+      $loop->watch_signal( TERM => sub { terminate $loop } );
+      $loop->start;
+      return;
+   };
+};
+
+sub call {
+   my ($self, @args) = @_; return $self->call_channel( 0, @args );
 }
 
-sub call_handler {
-   my $self      = shift;
-   my $code      = $self->code;
-   my $max_calls = $self->max_calls;
-   my $call_ch   = $self->call_ch;
-   my $return_ch = $self->return_ch ? $self->return_ch : FALSE;
+sub call_channel {
+   my ($self, $channel_no, @args) = @_;
+
+   $self->is_running or return; $args[ 0 ] ||= bson64id;
+
+   return $self->call_chs->[ $channel_no ]->send( [ @args ] );
+}
+
+sub sync_call_handler {
+   my $self       = shift;
+   my $code       = $self->on_recv->[ 0 ];
+   my $max_calls  = $self->max_calls;
+   my $call_chs   = $self->call_chs;
+   my $return_chs = $self->return_chs->[ 0 ] ? $self->return_chs : FALSE;
 
    return sub {
       my $self = shift; my $count = 0; my $log = $self->log;
 
-      $call_ch->start( 'read' ); $return_ch and $return_ch->start( 'write' );
+      $_start_channels->( $call_chs, 'read' );
+      $return_chs and $_start_channels->( $return_chs, 'write' );
 
       while (1) {
          my $param;
 
          try {
-            if ($param = $call_ch->recv) {
+            if (defined ($param = $call_chs->[ 0 ]->recv)) {
                my $rv = $code->( @{ $param } );
 
-               $return_ch and $return_ch->send( [ $param->[ 0 ], $rv ] );
+               if ($return_chs) {
+                  my $i = 0;
+
+                  while (defined $return_chs->[ $i ]) {
+                     $return_chs->[ $i++ ]->send( [ $param->[ 0 ], $rv ] );
+                  }
+               }
             }
          }
          catch {
@@ -134,8 +232,8 @@ sub start {
    $self->is_running and return; $self->_set_is_running( TRUE );
 
    $self->child->start;
-   $self->return_ch and $self->return_ch->start( 'read' );
-   $self->call_ch   and $self->call_ch->start( 'write' );
+   $self->return_chs->[ 0 ] and $_start_channels->( $self->return_chs, 'read' );
+   $_start_channels->( $self->call_chs, 'write' );
    return TRUE;
 }
 

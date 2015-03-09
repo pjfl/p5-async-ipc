@@ -250,6 +250,10 @@ my $_do_write = sub {
 };
 
 my $_on_read_ready = sub {
+   my $self = shift;
+
+   $self->want_readready_for_read or $self->want_readready_for_write or return;
+
    return sub {
       my $self = shift;
 
@@ -260,6 +264,8 @@ my $_on_read_ready = sub {
 };
 
 my $_on_write_ready = sub {
+   my $self = shift; $self->want_writeready or return;
+
    return sub {
       my $self = shift;
 
@@ -375,7 +381,7 @@ sub BUILD {
 
    $self->read_handle and not $self->on_read
       and throw Unspecified, [ 'on_read' ];
-
+   $self->_set_pid( $PID );
    return;
 }
 

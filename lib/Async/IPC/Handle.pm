@@ -42,25 +42,25 @@ my $_toggle_write_watcher = sub {
    return;
 };
 
-has 'is_closing'      => is => 'rwp', isa => Bool, default => FALSE;
+has 'is_closing'      => is => 'rwp',  isa => Bool, default => FALSE;
 
-has 'is_running'      => is => 'rwp', isa => Bool, default => FALSE;
+has 'is_running'      => is => 'rwp',  isa => Bool, default => FALSE;
 
-has 'on_closed'       => is => 'ro',  isa => Maybe[CodeRef];
+has 'on_closed'       => is => 'ro',   isa => Maybe[CodeRef];
 
-has 'on_read_ready'   => is => 'ro',  isa => Maybe[CodeRef];
+has 'on_read_ready'   => is => 'lazy', isa => Maybe[CodeRef];
 
-has 'on_write_ready'  => is => 'ro',  isa => Maybe[CodeRef];
+has 'on_write_ready'  => is => 'lazy', isa => Maybe[CodeRef];
 
-has 'read_handle'     => is => 'rwp', isa => Maybe[FileHandle];
+has 'read_handle'     => is => 'rwp',  isa => Maybe[FileHandle];
 
-has 'want_readready'  => is => 'rw',  isa => Bool, default => FALSE,
+has 'want_readready'  => is => 'rw',   isa => Bool, default => FALSE,
    trigger            => $_toggle_read_watcher;
 
-has 'want_writeready' => is => 'rw',  isa => Bool, default => FALSE,
+has 'want_writeready' => is => 'rw',   isa => Bool, default => FALSE,
    trigger            => $_toggle_write_watcher;
 
-has 'write_handle'    => is => 'rwp', isa => Maybe[FileHandle];
+has 'write_handle'    => is => 'rwp',  isa => Maybe[FileHandle];
 
 # Construction
 around 'BUILDARGS' => sub {

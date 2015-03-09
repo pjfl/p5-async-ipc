@@ -17,11 +17,11 @@ my $log         =  $prog->log;
 my $max_calls   =  10;
 my $results     =  {};
 my $routine     =  $factory->new_notifier
-   (  code      => sub { shift; sum @_ },
-      desc      => 'the test routine notifier',
+   (  desc      => 'the test routine notifier',
       max_calls => $max_calls,
       name      => 'routine_test',
       on_exit   => sub { $loop->stop },
+      on_recv   => sub { shift; sum @_ },
       on_return => sub { shift; $results->{ $_[ 0 ]->[ 0 ] } = $_[ 0 ]->[ 1 ] },
       type      => 'routine' );
 

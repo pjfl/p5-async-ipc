@@ -3,80 +3,22 @@ package Async::IPC::Semaphore;
 use namespace::autoclean;
 
 use Moo;
-use Async::IPC::Functions  qw( log_leader read_exactly read_error terminate );
-use Async::IPC::Loop;
-use Async::IPC::Process;
-use Class::Usul::Constants qw( FALSE TRUE );
-use Class::Usul::Functions qw( bson64id nonblocking_write_pipe_pair );
-use Class::Usul::Types     qw( Bool HashRef Object );
-use English                qw( -no_match_vars );
+use Class::Usul::Constants qw( TRUE );
 use Scalar::Util           qw( refaddr );
-use Try::Tiny;
 
 extends q(Async::IPC::Routine);
 
 # Private functions
 # Construction
 around 'BUILDARGS' => sub {
-   my ($orig, $self, @args) = @_; my $args = $orig->( $self, @args ); my $attr;
+   my ($orig, $self, @args) = @_; my $attr = $orig->( $self, @args );
 
-   for my $k ( qw( builder description loop name ) ) {
-      $attr->{ $k } = $args->{ $k };
-   }
-
-   for my $k ( qw( autostart ) ) {
-      my $v = delete $args->{ $k }; defined $v and $attr->{ $k } = $v;
-   }
-
-   $args->{retn_pipe } = nonblocking_write_pipe_pair if ($args->{on_return});
-   $args->{call_pipe } = nonblocking_write_pipe_pair;
-   $args->{code      } = $_call_handler->( $args );
-   $attr->{child_args} = $args;
-   return $attr;
-};
-
-sub call_handler {
-   my $self      = shift;
-   my $before    = delete $self->before;
-   my $_code     = delete $self->code;
-   my $after     = delete $self->after;
-   my $lock      = $self->_usul->lock;
-   my $call_ch   = $self->call_ch   ? $self->call_ch   : FALSE;
-   my $return_ch = $self->return_ch ? $self->return_ch : FALSE;
-   my $code      = sub { $lock->reset( k => $_[ 0 ] ); $_code->( @_ ) };
-
-   return sub {
-      my $self = shift; my $count = 0; my $log = $self->log;
-
-      my $max_calls = $self->max_calls;
-
-      $self->_set_loop( my $loop = Async::IPC::Loop->new );
-      $before and $before->( $self );
-
-      $rdr and $loop->watch_read_handle( $rdr, sub {
-         my $param;
-
-         try {
-            if ($param = $call_ch->recv) {
-               my $rv = $code->( @{ $param } );
-
-               $return_ch and $return_ch->send( [ $param->[ 0 ], $rv ] );
-            }
-         }
-         catch {
-            $self->log->error
-               ( (log_leader 'error', $self->name, $self->pid).$_ );
-         };
-
-         defined $param or terminate $loop;
-         $max_calls and ++$count >= $max_calls and terminate $loop;
-         return;
-      } );
-
-      $loop->watch_signal( TERM => sub { terminate $loop } );
-      $loop->start; $after and $after->( $self );
-      return;
+   my $lock = $attr->{builder}->lock;
+   my $code = $attr->{on_recv}->[ 0 ]; $attr->{on_recv}->[ 0 ] = sub {
+      $lock->reset( k => $_[ 0 ] ); $code->( @_ );
    };
+
+   return $attr;
 };
 
 sub raise {

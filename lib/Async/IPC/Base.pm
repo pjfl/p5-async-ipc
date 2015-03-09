@@ -55,7 +55,7 @@ sub invoke_event {
 
    $self->log->debug( "${lead}Invoke event ${ev_name}" );
 
-   return [ $code->( $self, @args ) ];
+   return $code->( $self, @args );
 }
 
 sub maybe_invoke_event {
@@ -66,7 +66,7 @@ sub maybe_invoke_event {
 
    $self->log->debug( "${lead}Invoke event ${ev_name}" );
 
-   return [ $code->( $self, @args ) ];
+   return $code->( $self, @args );
 }
 
 1;
@@ -133,11 +133,13 @@ event, otherwise returns false
 
 =head2 C<invoke_event>
 
-   $result_array_ref = $self->invoke_event( 'event_name', @args );
+   $result = $self->invoke_event( 'event_name', @args );
+
+See L</maybe_invoke_event>
 
 =head2 C<maybe_invoke_event>
 
-   $result_array_ref = $self->maybe_invoke_event( 'event_name', @args );
+   $result = $self->maybe_invoke_event( 'event_name', @args );
 
 =head2 C<capture_weakself>
 

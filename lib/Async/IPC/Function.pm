@@ -72,7 +72,7 @@ around 'BUILDARGS' => sub {
       my $v = delete $args->{ $k }; defined $v and $attr->{ $k } = $v;
    }
 
-   $args->{name       } = delete $args->{worker_name} || 'WORKER';
+   $args->{name} = delete $args->{worker_name} || (uc $attr->{name}).'_WORKER';
    $attr->{worker_args} = $args;
    return $attr;
 };

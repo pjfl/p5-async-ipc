@@ -136,6 +136,7 @@ my $_send_frozen = sub {
 my $_build_stream = sub {
    my $self = shift; return Async::IPC::Stream->new
       (  autoflush    => TRUE,
+         autostart    => FALSE,
          builder      => $self->_usul,
          description  => $self->description.' stream',
          loop         => $self->loop,
@@ -179,6 +180,7 @@ sub BUILD {
 
    ($self->read_mode eq 'async' or $self->write_mode eq 'async')
       and $self->stream;
+
    return;
 }
 
@@ -212,8 +214,14 @@ sub send {
 sub start {
    my ($self, $dirn) = @_;
 
-   if    ($dirn eq 'read' ) { $self->$_maybe_close_write_handle }
-   elsif ($dirn eq 'write') { $self->$_maybe_close_read_handle  }
+   if    ($dirn eq 'read' ) {
+      $self->$_maybe_close_write_handle;
+      $self->read_mode eq 'async' and $self->stream->start;
+   }
+   elsif ($dirn eq 'write') {
+      $self->$_maybe_close_read_handle;
+      $self->write_mode eq 'async' and $self->stream->start;
+   }
    else { throw 'A channel must start either read or write' }
 
    $self->_set_pid( $PID );

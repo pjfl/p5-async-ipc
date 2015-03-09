@@ -7,7 +7,8 @@ use Class::Usul::Functions qw( sum );
 use_ok 'Async::IPC';
 
 my $prog        =  Class::Usul::Programs->new
-   (  config    => { appclass => 'Class::Usul', tempdir => 't' }, noask => 1, );
+   (  config    => { appclass => 'Class::Usul', tempdir => 't' },
+      debug     => 1, noask => 1, );
 my $factory     =  Async::IPC->new( builder => $prog );
 my $loop        =  $factory->loop;
 my $log         =  $prog->log;
@@ -16,12 +17,12 @@ my $count       =  0;
 my $max_calls   =  3;
 my $results     =  {};
 my $semaphore   =  $factory->new_notifier
-   (  code      => sub { $count >= $max_calls and $loop->stop; $count++ },
-      desc      => 'description',
+   (  desc      => 'description',
       max_calls => $max_calls,
       name      => 'key',
       on_exit   => sub { $loop->stop },
-      on_return => sub { $results->{ $count++ } = $_[ 1 ] },
+      on_recv   => sub { $count >= $max_calls and $loop->stop; $count++ },
+      on_return => sub { shift; $results->{ $count++ } = $_[ 0 ]->[ 1 ] },
       type      => 'semaphore' );
 my $timer       =  $factory->new_notifier
    (  code      => sub { $semaphore->raise },
