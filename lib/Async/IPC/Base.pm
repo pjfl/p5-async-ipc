@@ -26,12 +26,24 @@ has '_usul'       => is => 'ro',   isa => BaseType,
    handles        => [ qw( config debug lock log run_cmd ) ],
    init_arg       => 'builder', required => TRUE;
 
-sub can_event {
+# Private methods
+my $_can_event = sub {
    my ($self, $ev_name) = @_;
 
    return ($self->can( $ev_name ) && $self->$ev_name);
-}
+};
 
+my $_invoke_event = sub {
+   my ($self, $ev_name, $code, @args) = @_;
+
+   my $lead = log_leader 'debug', $self->name, $self->pid;
+
+   $self->log->debug( "${lead}Invoke event ${ev_name}" );
+
+   return $code->( $self, @args );
+};
+
+# Public methods
 sub capture_weakself {
    my ($self, $code) = @_; weaken $self;
 
@@ -48,25 +60,18 @@ sub capture_weakself {
 sub invoke_event {
    my ($self, $ev_name, @args) = @_;
 
-   my $code = $self->can_event( $ev_name )
+   my $code = $self->$_can_event( $ev_name )
       or throw 'Event [_1] unknown', [ $ev_name ];
 
-   my $lead = log_leader 'debug', $self->name, $self->pid;
-
-   $self->log->debug( "${lead}Invoke event ${ev_name}" );
-
-   return $code->( $self, @args );
+   return $self->$_invoke_event( $ev_name, $code, @args );
 }
 
 sub maybe_invoke_event {
    my ($self, $ev_name, @args) = @_;
 
-   my $code = $self->can_event( $ev_name ) or return FALSE;
-   my $lead = log_leader 'debug', $self->name, $self->pid;
+   my $code = $self->$_can_event( $ev_name ) or return;
 
-   $self->log->debug( "${lead}Invoke event ${ev_name}" );
-
-   return $code->( $self, @args );
+   return $self->$_invoke_event( $ev_name, $code, @args );
 }
 
 1;

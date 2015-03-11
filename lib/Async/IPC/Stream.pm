@@ -3,6 +3,7 @@ package Async::IPC::Stream;
 use namespace::autoclean;
 
 use Moo;
+use Async::IPC::Functions  qw( log_leader );
 use Encode 2.11            qw( find_encoding STOP_AT_PARTIAL );
 use Errno                  qw( EAGAIN EWOULDBLOCK EINTR EPIPE );
 use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE NUL TRUE );
@@ -195,10 +196,11 @@ my $_do_read = sub {
 
    while (TRUE) {
       my $data;
-      my $red = $self->reader->( $self, $handle, $data, $self->read_len );
+      my $red  = $self->reader->( $self, $handle, $data, $self->read_len );
+      my $lead = log_leader 'debug', $self->name, $self->pid;
 
+      $self->log->debug( "${lead}Read ".($red // 'undef').' bytes' );
       defined $red or return $self->$_handle_read_error( $ERRNO );
-
       $self->_set_read_eof( my $eof = ($red == 0) );
 
       if (my $encoder = $self->encoder) {
@@ -260,7 +262,7 @@ my $_on_read_ready = sub {
       $self->want_readready_for_read  and $self->$_do_read;
       $self->want_readready_for_write and $self->$_do_write;
       return;
-   }
+   };
 };
 
 my $_on_write_ready = sub {
@@ -277,7 +279,7 @@ my $_on_write_ready = sub {
       $self->want_writeready_for_read  and $self->$_do_read;
       $self->want_writeready_for_write and $self->$_do_write;
       return;
-   }
+   };
 };
 
 # Public attributes
@@ -377,11 +379,10 @@ has 'writer'                    => is => 'ro',   isa => CodeRef,
 
 # Construction
 sub BUILD {
-   my $self = shift;
+   my $self = shift; $self->_set_pid( $PID );
 
    $self->read_handle and not $self->on_read
       and throw Unspecified, [ 'on_read' ];
-   $self->_set_pid( $PID );
    return;
 }
 

@@ -212,7 +212,7 @@ sub send {
 }
 
 sub start {
-   my ($self, $dirn) = @_;
+   my ($self, $dirn) = @_; $self->_set_pid( $PID );
 
    if    ($dirn eq 'read' ) {
       $self->$_maybe_close_write_handle;
@@ -224,7 +224,6 @@ sub start {
    }
    else { throw 'A channel must start either read or write' }
 
-   $self->_set_pid( $PID );
    return;
 }
 

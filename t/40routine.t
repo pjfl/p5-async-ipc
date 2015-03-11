@@ -21,8 +21,10 @@ my $routine     =  $factory->new_notifier
       max_calls => $max_calls,
       name      => 'routine_test',
       on_exit   => sub { $loop->stop },
-      on_recv   => sub { shift; sum @_ },
-      on_return => sub { shift; $results->{ $_[ 0 ]->[ 0 ] } = $_[ 0 ]->[ 1 ] },
+      on_recv   => sub { shift; shift; sum @_ },
+      on_return => sub {
+         my $self = shift; $results->{ $_[ 0 ]->[ 0 ] } = $_[ 0 ]->[ 1 ];
+         return 1 },
       type      => 'routine' );
 
 for (my $i = 0; $i < $max_calls; $i++) {

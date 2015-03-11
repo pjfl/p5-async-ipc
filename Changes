@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - Function tests pass
           - Routine now uses Channel and Process
           - Added Handle, Stream, and Channel
           - Added File watcher

@@ -32,44 +32,45 @@ my $_build_channel = sub {
       ( builder     => $self->_usul,
         description => $self->description." ${dirn} channel ${channel_no}",
         loop        => $self->loop,
-        name        => $self->name.'_'.(uc $dirn)."_CH${channel_no}",
+        name        => $self->name."_${dirn}_ch${channel_no}",
         %args );
 };
 
 my $_build_async_recv_handler = sub {
-   my ($self, $i, $code) = @_; my $count = 0;
+   my ($self, $ch_no, $code) = @_;
 
-   my $max_calls = $self->max_calls; my $return_ch = $self->return_chs->[ $i ];
+   my $count     = 0;
+   my $max_calls = $self->max_calls;
+   my $return_ch = $self->return_chs->[ $ch_no ];
 
    return sub {
-      my ($self, $param) = @_;
+      my ($self, $param) = @_; my $log = $self->log;
 
       try {
-         my $rv = $code->( @{ $param } );
+         my $rv = $code->( $self, @{ $param } );
 
          $return_ch and $return_ch->send( [ $param->[ 0 ], $rv ] );
       }
-      catch {
-         $self->log->error( (log_leader 'error', $self->name, $self->pid).$_ );
-      };
+      catch { $log->error( (log_leader 'error', $self->name, $self->pid).$_ ) };
 
       $max_calls and ++$count >= $max_calls and terminate $self->loop;
+      return TRUE;
    };
 };
 
 my $_build_call_chs = sub {
-   my $self = shift; my %args = (); my $channels = []; my $i = 0;
+   my $self = shift; my %args = (); my $channels = []; my $ch_no = 0;
 
    $args{read_mode} = (defined $self->on_recv->[ 1 ]) ? 'async' : 'sync';
 
-   while (defined (my $code = $self->on_recv->[ $i ])) {
+   while (defined (my $code = $self->on_recv->[ $ch_no ])) {
       if ($args{read_mode} eq 'async') {
          $args{on_eof } = sub { terminate $_[ 0 ]->loop };
-         $args{on_recv} = $self->$_build_async_recv_handler( $i, $code );
+         $args{on_recv} = $self->$_build_async_recv_handler( $ch_no, $code );
       }
 
-      push @{ $channels }, $self->$_build_channel( 'call', $i, %args );
-      delete $args{on_eof}; delete $args{on_recv}; $i++;
+      push @{ $channels }, $self->$_build_channel( 'call', $ch_no, %args );
+      delete $args{on_eof}; delete $args{on_recv}; $ch_no++;
    }
 
    return $channels;
@@ -85,26 +86,26 @@ my $_build_child = sub {
 };
 
 my $_build_return_chs = sub {
-   my $self = shift; my %args = (); my $channels = []; my $i = 0;
+   my $self = shift; my %args = (); my $channels = []; my $ch_no = 0;
 
    $self->on_return->[ 0 ] or return; $args{read_mode} = 'async';
 
-   while (defined ($args{on_recv} = $self->on_return->[ $i ])) {
-      push @{ $channels }, $self->$_build_channel( 'return', $i, %args );
-      delete $args{on_recv}; $i++;
+   while (defined ($args{on_recv} = $self->on_return->[ $ch_no ])) {
+      push @{ $channels }, $self->$_build_channel( 'return', $ch_no, %args );
+      delete $args{on_recv}; $ch_no++;
    }
 
    return $channels;
 };
 
-has 'call_chs'    => is => 'lazy', isa => ArrayRef[Object],
+has 'call_chs'   => is => 'lazy', isa => ArrayRef[Object],
    builder       => $_build_call_chs;
 
-has 'child'      => is => 'lazy', isa => Object,  builder  => $_build_child;
+has 'child'      => is => 'lazy', isa => Object,  builder => $_build_child;
 
-has 'child_args' => is => 'ro',   isa => HashRef, builder  => sub { {} };
+has 'child_args' => is => 'ro',   isa => HashRef, builder => sub { {} };
 
-has 'is_running' => is => 'rwp',  isa => Bool,    default  => FALSE;
+has 'is_running' => is => 'rwp',  isa => Bool,    default => FALSE;
 
 has 'max_calls'  => is => 'ro',   isa => PositiveInt, default => 0;
 
@@ -146,7 +147,8 @@ sub BUILD {
 
    defined $self->on_recv->[ 0 ] or throw Unspecified, [ 'on_recv' ];
 
-   $self->autostart and $self->start; return;
+   $self->autostart and $self->start;
+   return;
 }
 
 sub DEMOLISH {
@@ -184,29 +186,29 @@ sub call_channel {
 
 sub sync_call_handler {
    my $self       = shift;
+   my $call_chs   = $self->call_chs;
    my $code       = $self->on_recv->[ 0 ];
    my $max_calls  = $self->max_calls;
-   my $call_chs   = $self->call_chs;
    my $return_chs = $self->return_chs->[ 0 ] ? $self->return_chs : FALSE;
 
    return sub {
       my $self = shift; my $count = 0; my $log = $self->log;
 
-      $_start_channels->( $call_chs, 'read' );
       $return_chs and $_start_channels->( $return_chs, 'write' );
+      $_start_channels->( $call_chs, 'read' );
 
       while (1) {
          my $param;
 
          try {
             if (defined ($param = $call_chs->[ 0 ]->recv)) {
-               my $rv = $code->( @{ $param } );
+               my $rv = $code->( $self, @{ $param } );
 
                if ($return_chs) {
-                  my $i = 0;
+                  my $ch_no = 0;
 
-                  while (defined $return_chs->[ $i ]) {
-                     $return_chs->[ $i++ ]->send( [ $param->[ 0 ], $rv ] );
+                  while (defined $return_chs->[ $ch_no ]) {
+                     $return_chs->[ $ch_no++ ]->send( [ $param->[ 0 ], $rv ] );
                   }
                }
             }

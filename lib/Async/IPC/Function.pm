@@ -10,6 +10,7 @@ use Class::Usul::Constants qw( FALSE OK TRUE );
 use Class::Usul::Functions qw( bson64id );
 use Class::Usul::Types     qw( ArrayRef Bool HashRef NonZeroPositiveInt
                                PositiveInt SimpleStr );
+use English                qw( -no_match_vars );
 
 extends q(Async::IPC::Base);
 
@@ -33,7 +34,7 @@ my $_new_worker = sub {
    my $on_exit = $args->{on_exit}; my $workers = $self->worker_objects;
 
    $args->{description} .= " ${index}";
-   $args->{on_exit} = sub { delete $workers->{ $_[ 0 ] }; $on_exit->( @_ ) };
+   $args->{on_exit} = sub { delete $workers->{ $_[ 1 ] }; $on_exit->( @_ ) };
 
    my $worker = Async::IPC::Routine->new( $args ); my $pid = $worker->pid;
 
@@ -72,13 +73,16 @@ around 'BUILDARGS' => sub {
       my $v = delete $args->{ $k }; defined $v and $attr->{ $k } = $v;
    }
 
-   $args->{name} = delete $args->{worker_name} || (uc $attr->{name}).'_WORKER';
+   $args->{name} = delete $args->{worker_name} || $attr->{name}.'_worker';
    $attr->{worker_args} = $args;
    return $attr;
 };
 
 sub BUILD {
-   my $self = shift; $self->autostart and $self->start; return;
+   my $self = shift; $self->_set_pid( $PID );
+
+   $self->autostart and $self->start;
+   return;
 }
 
 sub DEMOLISH {
@@ -90,14 +94,6 @@ sub call {
    my ($self, @args) = @_; $self->is_running or return; $args[ 0 ] ||= bson64id;
 
    return $self->$_next_worker->call( @args );
-}
-
-sub set_return_callback {
-   my ($self, @args) = @_; my $workers = $self->worker_objects;
-
-   $workers->{ $_ }->set_return_callback( @args ) for (keys %{ $workers });
-
-   return;
 }
 
 sub start {

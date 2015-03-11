@@ -13,16 +13,28 @@ my $factory     =  Async::IPC->new( builder => $prog );
 my $loop        =  $factory->loop;
 my $log         =  $prog->log;
 
+sub wait_for (&) {
+   my ($cond) = @_; my (undef, $callerfile, $callerline) = caller;
+
+   my $timedout = 0; $loop->watch_time
+      ( my $timerid = $loop->uuid, sub { $timedout = 1 }, 10, );
+
+   $loop->once( 1 ) while (not $cond->() and not $timedout);
+
+   if ($timedout) {
+      die "Nothing was ready after 10 second wait; called at $callerfile line $callerline\n";
+   }
+   else { $loop->unwatch_time( $timerid ) }
+}
+
 my $max_calls   =  10;
 my $results     =  {};
 my $function    =  $factory->new_notifier
    (  desc      => 'the test function notifier',
       name      => 'function_test',
-      on_recv   => sub { shift; sum @_ },
+      on_recv   => sub { shift; shift; sum @_ },
       on_return => sub {
-         shift; $results->{ $_[ 0 ]->[ 0 ] } = $_[ 0 ]->[ 1 ];
-         my $count = () = keys %{ $results };
-         $count == $max_calls and $loop->stop },
+         shift; $results->{ $_[ 0 ]->[ 0 ] } = $_[ 0 ]->[ 1 ]; return 1 },
       type      => 'function' );
 
 for (my $i = 0; $i < $max_calls; $i++) {
@@ -31,7 +43,7 @@ for (my $i = 0; $i < $max_calls; $i++) {
    $function->call( (sum @args), @args );
 }
 
-$loop->start;
+wait_for { my $count = () = keys %{ $results }; $count == $max_calls };
 
 for (sort { $a <=> $b } keys %{ $results }) {
    is $results->{ $_ }, $_, "sum ${_}";
@@ -40,7 +52,7 @@ for (sort { $a <=> $b } keys %{ $results }) {
 my $count = () = keys %{ $results };
 
 is $count, $max_calls, 'All results present';
-undef $function;
+undef $function; $loop->once;
 
 $max_calls   =  11;
 $results     =  {};
@@ -48,11 +60,9 @@ $function    =  $factory->new_notifier
    (  desc        => 'the test function notifier',
       max_workers => 3,
       name        => 'function_test',
-      on_recv     => sub { shift; sum @_ },
+      on_recv     => sub { shift; shift; sum @_ },
       on_return   => sub {
-         shift; $results->{ $_[ 0 ]->[ 0 ] } = $_[ 0 ]->[ 1 ];
-         my $count = () = keys %{ $results };
-         $count == $max_calls and $loop->stop },
+         shift; $results->{ $_[ 0 ]->[ 0 ] } = $_[ 0 ]->[ 1 ]; return 1 },
       type        => 'function' );
 
 for (my $i = 0; $i < $max_calls; $i++) {
@@ -61,7 +71,7 @@ for (my $i = 0; $i < $max_calls; $i++) {
    $function->call( (sum @args), @args );
 }
 
-$loop->start; $function->stop;
+wait_for { my $count = () = keys %{ $results }; $count == $max_calls };
 
 for (sort { $a <=> $b } keys %{ $results }) {
    is $results->{ $_ }, $_, "sum ${_}";
@@ -70,10 +80,13 @@ for (sort { $a <=> $b } keys %{ $results }) {
 $count = () = keys %{ $results };
 
 is $count, $max_calls, 'All results present';
+undef $function;
+
+$loop->watch_child( 0 );
 
 done_testing;
 
-$prog->config->logfile->unlink;
+#$prog->config->logfile->unlink;
 
 # Local Variables:
 # mode: perl

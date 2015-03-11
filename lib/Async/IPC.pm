@@ -22,26 +22,19 @@ has '_usul' => is => 'ro',   isa => BaseType, handles => [ 'log' ],
 
 # Public methods
 sub new_notifier {
-   my ($self, %p) = @_;
-
-   my $desc = delete $p{desc}; my $log = $self->log; my $name = delete $p{name};
-
-   my $log_level = delete $p{log_level} || 'info'; my $type = delete $p{type};
-
-   my $logger = sub {
-      my ($level, $id, $msg) = @_; my $lead = log_leader $level, $name, $id;
-
-      return $log->$level( $lead.$msg );
-   };
+   my ($self, %p) = @_; my $desc = delete $p{desc}; my $name = delete $p{name};
 
    my $_on_exit = delete $p{on_exit}; my $on_exit = sub {
-      my $pid = shift; my $rv = WEXITSTATUS( shift );
+      my $self = shift; my $pid = shift; my $rv = WEXITSTATUS( shift );
 
-      $logger->( $log_level, $pid, ucfirst "${desc} stopped rv ${rv}" );
+      my $lead = log_leader 'info', $name, $pid;
 
-      return $_on_exit ? $_on_exit->( $pid, $rv ) : undef;
+      $self->log->info( $lead.(ucfirst "${desc} stopped rv ${rv}") );
+
+      return $_on_exit ? $_on_exit->( $self, $pid, $rv ) : TRUE;
    };
 
+   my $type  = delete $p{type};
    my $class = first_char $type eq '+' ? (substr $type, 1)
                                        : __PACKAGE__.'::'.(ucfirst $type);
 

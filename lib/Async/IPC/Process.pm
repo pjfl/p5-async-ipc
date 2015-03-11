@@ -42,7 +42,8 @@ sub start {
 
    $self->_set_pid( my $pid = $self->run_cmd( $cmd, $args )->pid );
 
-   $self->on_exit and $self->loop->watch_child( $pid, $self->on_exit );
+   $self->on_exit and $self->loop->watch_child
+      ( $pid, $self->capture_weakself( $self->on_exit ) );
 
    my $lead = log_leader 'info', $self->name, $pid;
 
