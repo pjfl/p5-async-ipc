@@ -134,6 +134,10 @@ reference to log when it's called
 
 Starts the child process, sets on exits and return callbacks
 
+=head2 C<DEMOLISH>
+
+Stops the process prior to object destruction
+
 =head2 C<is_running>
 
    $bool = $process->is_running;

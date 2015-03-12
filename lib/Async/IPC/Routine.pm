@@ -246,6 +246,7 @@ sub stop {
    $self->is_running or return; $self->_set_is_running( FALSE );
 
    $self->child->stop;
+   # TODO: Add stop stop_channels
    return TRUE;
 }
 
@@ -285,7 +286,7 @@ Defines the following attributes;
 
 =over 3
 
-=item C<call_ch>
+=item C<call_chs>
 
 A L<Async::IPC::Channel> object used by the parent to send call arguments to
 the child process
@@ -307,11 +308,13 @@ Boolean defaults to true. Set to false when L</stop> is called
 Positive integer defaults to zero. The maximum number of calls to execute
 before terminating. When zero do not terminate
 
+=item C<on_recv>
+
 =item C<on_return>
 
 Invoke this callback subroutine when the code reference returns a value
 
-=item C<return_ch>
+=item C<return_chs>
 
 A L<Async::IPC::Channel> object used by the parent process to read the result
 back from the child
@@ -324,6 +327,12 @@ back from the child
 
 Splits out the child constructor arguments
 
+=head2 C<BUILD>
+
+=head2 C<DEMOLISH>
+
+=head2 C<async_call_handler>
+
 =head2 C<call>
 
    $result = $routine->call( @args );
@@ -331,11 +340,19 @@ Splits out the child constructor arguments
 Call the code reference in the child process so long as C<is_running> is
 true
 
+=head2 C<call_channel>
+
+=head2 C<pid>
+
+=head2 C<start>
+
 =head2 C<stop>
 
    $routine->stop;
 
 Stop the child process
+
+=head2 C<sync_call_handler>
 
 =head1 Diagnostics
 

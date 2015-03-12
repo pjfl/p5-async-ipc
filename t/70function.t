@@ -83,7 +83,7 @@ undef $function; $loop->watch_child( 0 );
 
 done_testing;
 
-#$prog->config->logfile->unlink;
+$prog->config->logfile->unlink;
 
 # Local Variables:
 # mode: perl

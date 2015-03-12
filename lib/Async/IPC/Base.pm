@@ -138,6 +138,11 @@ A non zero positive integer. The process id of this notifier
 
 =head1 Subroutines/Methods
 
+=head2 C<BUILDARGS>
+
+Allows C<desc> to be used as an alias for the C<description> attribute during
+construction
+
 =head2 C<can_event>
 
    $code_ref = $self->can_event( $event_name );

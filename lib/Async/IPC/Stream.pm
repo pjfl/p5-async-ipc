@@ -546,6 +546,8 @@ Defines the following attributes;
 
 =item C<close_on_read_eof>
 
+=item C<encoding>
+
 =item C<flushing_read>
 
 =item C<on_outgoing_empty>
@@ -585,6 +587,8 @@ Defines the following attributes;
 =item C<readbuff>
 
 =item C<reader>
+
+=item C<readqueue>
 
 =item C<start>
 

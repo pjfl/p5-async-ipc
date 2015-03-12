@@ -226,6 +226,8 @@ Separates the worker parameters from pool parameters
 If the L<autostart|Async::IPC::Base/autostart> attribute is true, start all of
 the worker processes in the pool
 
+=head2 C<DEMOLISH>
+
 =head2 C<call>
 
    $result = $function->call( @args );
@@ -233,11 +235,15 @@ the worker processes in the pool
 Call the next worker in the pool passing in the arguments and returning the
 result (if there is one and it is required)
 
+=head2 C<close>
+
 =head2 C<set_return_callback>
 
    $function->set_return_callback( @args );
 
 Set the return callback subroutine in each of the worker processes
+
+=head2 C<start>
 
 =head2 C<stop>
 

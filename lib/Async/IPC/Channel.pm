@@ -310,6 +310,8 @@ Defines the following attributes;
 
 =head2 C<send>
 
+=head2 C<stop>
+
 =head2 C<start>
 
 =head1 Diagnostics

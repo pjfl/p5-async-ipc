@@ -300,6 +300,12 @@ If the process id is zero and there is no callback subroutine, wait for all
 child processes to exit. If the callback subroutine is supplied then, when
 called, it should return the list of process ids to wait for
 
+=head2 C<watching_child>
+
+   $bool = $loop->watching_child( $process_id );
+
+Returns true if the specified process is being watched, false otherwise
+
 =head2 C<unwatch_child>
 
    $loop->unwatch_child( $process_id );
@@ -311,6 +317,12 @@ Delete the child watcher for the specified process
    $loop->watch_idle( $id, $callback_sub );
 
 Executes the callback after any pending events have been processed
+
+=head2 C<watching_idle>
+
+   $bool = $loop->watching_idle( $id );
+
+Returns true if the specified id is an idle watcher, false otherwise
 
 =head2 C<unwatch_idle>
 
@@ -326,7 +338,7 @@ The callback subroutine is invoked when the file handle becomes readable
 
 =head2 C<watching_read_handle>
 
-   $bool = $self->watching_read_handle( $file_handle );
+   $bool = $loop->watching_read_handle( $file_handle );
 
 Returns true if the file handle is being watched for reading, false otherwise
 
@@ -344,6 +356,14 @@ The callback subroutine is invoked when the process receives the named
 signal. The returned id uniquely identifies the watcher and can be passed
 to L</unwatch_signal>
 
+=head2 C<watching_signal>
+
+   $bool = $loop->watching_signal( $signal_name, $optional_attach_id );
+
+Returns true if the signal is being watched, false otherwise. If the
+C<$optional_attach_id> is supplied tests to see if the signal has
+that attach callback
+
 =head2 C<unwatch_signal>
 
    $loop->unwatch_signal( $signal_name, $attach_id );
@@ -359,6 +379,12 @@ Invoke the callback subroutine after C<$delay> seconds. Repeat at C<$interval>
 seconds. If the C<$interval> argument is either C<abs> or C<rel> then invoke
 the callback only once. Requires a unique identifier
 
+=head2 C<watching_time>
+
+   $bool = $loop->watching_time( $id );
+
+Returns true if the specified id is time watching identifier, false otherwise
+
 =head2 C<unwatch_time>
 
    $callback_sub = $loop->unwatch_time( $id );
@@ -373,7 +399,7 @@ The callback subroutine is invoked when the file handle becomes writable
 
 =head2 C<watching_write_handle>
 
-   $bool = $self->watching_write_handle( $file_handle );
+   $bool = $loop->watching_write_handle( $file_handle );
 
 Returns true if the file handle is being watched for writing, false otherwise
 
