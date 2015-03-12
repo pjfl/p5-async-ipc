@@ -5,7 +5,7 @@ use feature 'state';
 
 use AnyEvent;
 use Async::Interrupt;
-use Class::Usul::Functions qw( arg_list );
+use Class::Usul::Functions qw( arg_list is_member );
 use English                qw( -no_match_vars );
 use Scalar::Util           qw( blessed );
 
@@ -70,6 +70,12 @@ sub watch_child {
    return;
 }
 
+sub watching_child {
+   my ($self, $id) = @_; my $w = $self->$_events( 'watchers' );
+
+   return ((exists $w->{ $id }) && (defined $w->{ $id })) ? 1 : 0;
+}
+
 sub unwatch_child {
    my $w = $_[ 0 ]->$_events( 'watchers' ); my $id = $_[ 1 ];
 
@@ -78,11 +84,17 @@ sub unwatch_child {
 }
 
 sub watch_idle {
-   my ($self, $id, $cb) = @_; my $w = $self->$_events( 'idle' );
+   my ($self, $id, $cb) = @_; my $i = $self->$_events( 'idle' );
 
-   $w->{ $id } = AnyEvent->idle( cb => sub {
-      delete $w->{ $id }; $cb->( @_ ) } );
+   $i->{ $id } = AnyEvent->idle( cb => sub {
+      delete $i->{ $id }; $cb->( @_ ) } );
    return;
+}
+
+sub watching_idle {
+   my ($self, $id) = @_; my $i = $self->$_events( 'idle' );
+
+   return ((exists $i->{ $id }) && (defined $i->{ $id })) ? 1 : 0;
 }
 
 sub unwatch_idle {
@@ -122,6 +134,16 @@ sub watch_signal {
    push @{ $attaches }, $cb; return \$attaches->[ -1 ];
 }
 
+sub watching_signal {
+   my ($self, $signal, $id) = @_; my $s = $self->$_events( 'signals' );
+
+   my $watching = (exists $s->{ $signal }) && (defined $s->{ $signal });
+
+   (not $watching or not defined $id) and return $watching;
+
+   return is_member $id, $self->$_sigattaches->{ $signal };
+}
+
 sub unwatch_signal {
    my ($self, $signal, $id) = @_;
 
@@ -158,8 +180,14 @@ sub watch_time {
    return;
 }
 
+sub watching_time {
+   my ($self, $id) = @_; my $t = $self->$_events( 'timers' );
+
+   return ((exists $t->{ $id }) && (defined $t->{ $id })) ? 1 : 0;
+}
+
 sub unwatch_time {
-   my $t = $_[ 0 ]->$_events( 'timers' ); my $id = $_[ 1 ];
+   my ($self, $id) = @_; my $t = $self->$_events( 'timers' );
 
    exists $t->{ $id } or return 0; my $cb = $t->{ $id }->[ 0 ];
 

@@ -5,46 +5,28 @@ use namespace::autoclean;
 use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 10 $ =~ /\d+/gmx );
 
 use Moo;
-use Async::IPC::Functions  qw( log_leader );
 use Async::IPC::Loop;
 use Class::Usul::Constants qw( TRUE );
 use Class::Usul::Functions qw( ensure_class_loaded first_char );
 use Class::Usul::Types     qw( BaseType Object );
-use POSIX                  qw( WEXITSTATUS );
 
 # Public attributes
-has 'loop'  => is => 'lazy', isa => Object,
-   builder  => sub { Async::IPC::Loop->new };
+has 'loop'    => is => 'lazy', isa => Object,
+   builder    => sub { Async::IPC::Loop->new };
 
 # Private attributes
-has '_usul' => is => 'ro',   isa => BaseType, handles => [ 'log' ],
-   init_arg => 'builder', required => TRUE;
+has 'builder' => is => 'ro',   isa => BaseType, required => TRUE;
 
 # Public methods
 sub new_notifier {
-   my ($self, %p) = @_; my $desc = delete $p{desc}; my $name = delete $p{name};
+   my ($self, %p) = @_; my $type = delete $p{type};
 
-   my $_on_exit = delete $p{on_exit}; my $on_exit = sub {
-      my $self = shift; my $pid = shift; my $rv = WEXITSTATUS( shift );
-
-      my $lead = log_leader 'info', $name, $pid;
-
-      $self->log->info( $lead.(ucfirst "${desc} stopped rv ${rv}") );
-
-      return $_on_exit ? $_on_exit->( $self, $pid, $rv ) : TRUE;
-   };
-
-   my $type  = delete $p{type};
    my $class = first_char $type eq '+' ? (substr $type, 1)
                                        : __PACKAGE__.'::'.(ucfirst $type);
 
    ensure_class_loaded $class;
 
-   return $class->new( builder     => $self->_usul,
-                       description => $desc,
-                       loop        => $self->loop,
-                       name        => $name,
-                       on_exit     => $on_exit, %p, );
+   return $class->new( builder => $self->builder, loop => $self->loop, %p, );
 }
 
 1;

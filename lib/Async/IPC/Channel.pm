@@ -17,6 +17,7 @@ extends q(Async::IPC::Base);
 my $CODEC_TYPE = enum 'CODEC_TYPE' => [ 'Sereal', 'Storable' ];
 my $MODE_TYPE  = enum 'MODE_TYPE'  => [ 'async', 'sync' ];
 
+# Private methods
 my $_build_decode = sub {
    my $self = shift;
 
@@ -123,7 +124,7 @@ my $_send_frozen = sub {
 
    if (defined $len) {
       $lead = log_leader 'debug', $self->name, $self->pid;
-      $self->log->debug( $lead."Wrote ${len} bytes" );
+      $self->log->debug( "${lead}Wrote ${len} bytes" );
    }
    else {
       $lead = log_leader 'error', $self->name, $self->pid;
@@ -146,6 +147,7 @@ my $_build_stream = sub {
          write_handle => $self->write_handle, );
 };
 
+# Public attributes
 has '+autostart'   => default => FALSE;
 
 has 'codec'        => is => 'ro',   isa => $CODEC_TYPE, default => 'Storable';
@@ -175,6 +177,7 @@ has 'write_handle' => is => 'rwp',  isa => Maybe[FileHandle],
 
 has 'write_mode'   => is => 'ro',   isa => $MODE_TYPE, default => 'sync';
 
+# Construction
 sub BUILD {
    my $self = shift; $self->read_handle; $self->write_handle;
 
@@ -188,6 +191,7 @@ sub DEMOLISH {
    $_[ 0 ]->close; return;
 }
 
+# Public methods
 sub close {
    my $self = shift;
 
@@ -211,20 +215,34 @@ sub send {
    return $_[ 0 ]->$_send_frozen( $_[ 0 ]->encode->( $_[ 1 ] ) );
 }
 
+sub stop {
+   my ($self, $dirn) = @_;
+
+   if    ($dirn eq 'read' ) {
+      $self->read_mode eq 'async' and return $self->stream->stop;
+   }
+   elsif ($dirn eq 'write') {
+      $self->write_mode eq 'async' and return $self->stream->stop;
+   }
+   else { throw 'A channel must stop either read or write' }
+
+   return TRUE;
+}
+
 sub start {
    my ($self, $dirn) = @_; $self->_set_pid( $PID );
 
    if    ($dirn eq 'read' ) {
       $self->$_maybe_close_write_handle;
-      $self->read_mode eq 'async' and $self->stream->start;
+      $self->read_mode eq 'async' and return $self->stream->start;
    }
    elsif ($dirn eq 'write') {
       $self->$_maybe_close_read_handle;
-      $self->write_mode eq 'async' and $self->stream->start;
+      $self->write_mode eq 'async' and return $self->stream->start;
    }
    else { throw 'A channel must start either read or write' }
 
-   return;
+   return TRUE;
 }
 
 1;

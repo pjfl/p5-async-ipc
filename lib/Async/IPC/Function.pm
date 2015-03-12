@@ -9,10 +9,12 @@ use Async::IPC::Routine;
 use Class::Usul::Constants qw( FALSE OK TRUE );
 use Class::Usul::Functions qw( bson64id );
 use Class::Usul::Types     qw( ArrayRef Bool HashRef NonZeroPositiveInt
-                               PositiveInt SimpleStr );
+                               Object PositiveInt SimpleStr );
 use English                qw( -no_match_vars );
 
 extends q(Async::IPC::Base);
+
+my $Indexes = {};
 
 # Public attributes
 has 'is_running'     => is => 'rwp', isa => Bool, default => TRUE;
@@ -21,17 +23,20 @@ has 'max_calls'      => is => 'ro',  isa => PositiveInt, default => 0;
 
 has 'max_workers'    => is => 'ro',  isa => NonZeroPositiveInt, default => 1;
 
-has 'worker_args'    => is => 'ro',  isa => HashRef,  default => sub { {} };
+has 'worker_args'    => is => 'ro',  isa => HashRef, builder => sub { {} };
 
-has 'worker_index'   => is => 'ro',  isa => ArrayRef, default => sub { [] };
+has 'worker_index'   => is => 'ro',  isa => ArrayRef[PositiveInt],
+   builder           => sub { [] };
 
-has 'worker_objects' => is => 'ro',  isa => HashRef,  default => sub { {} };
+has 'worker_objects' => is => 'ro',  isa => HashRef[Object],
+   builder           => sub { {} };
 
 # Private methods
 my $_new_worker = sub {
    my ($self, $index) = @_; my $args = { %{ $self->worker_args } };
 
-   my $on_exit = $args->{on_exit}; my $workers = $self->worker_objects;
+   my $on_exit = $args->{on_exit} // sub {};
+   my $workers = $self->worker_objects;
 
    $args->{description} .= " ${index}";
    $args->{on_exit} = sub { delete $workers->{ $_[ 1 ] }; $on_exit->( @_ ) };
@@ -44,11 +49,11 @@ my $_new_worker = sub {
 };
 
 my $_next_worker_index = sub {
-   my $self = shift; state $worker //= -1;
+   my $self = shift; my $index = $Indexes->{ $self->name } // -1;
 
-   $worker++; $worker >= $self->max_workers and $worker = 0;
+   $index++; $index >= $self->max_workers and $index = 0;
 
-   return $worker;
+   return $Indexes->{ $self->name } = $index;
 };
 
 my $_next_worker = sub {
@@ -86,7 +91,7 @@ sub BUILD {
 }
 
 sub DEMOLISH {
-   my $self = shift; $self->stop; return;
+   my $self = shift; $self->close; return;
 }
 
 # Public methods
@@ -94,6 +99,10 @@ sub call {
    my ($self, @args) = @_; $self->is_running or return; $args[ 0 ] ||= bson64id;
 
    return $self->$_next_worker->call( @args );
+}
+
+sub close {
+   my $self = shift; $self->stop; delete $Indexes->{ $self->name }; return;
 }
 
 sub start {

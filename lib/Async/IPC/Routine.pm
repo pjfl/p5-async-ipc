@@ -62,6 +62,7 @@ my $_build_call_chs = sub {
    my $self = shift; my %args = (); my $channels = []; my $ch_no = 0;
 
    $args{read_mode} = (defined $self->on_recv->[ 1 ]) ? 'async' : 'sync';
+# TODO:  $args{write_mode} = 'async';
 
    while (defined (my $code = $self->on_recv->[ $ch_no ])) {
       if ($args{read_mode} eq 'async') {
@@ -152,7 +153,7 @@ sub BUILD {
 }
 
 sub DEMOLISH {
-   $_[ 0 ]->stop; return;
+   my $self = shift; $self->stop; return;
 }
 
 # Public methods

@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - Added missing Loop::watching_* methods
           - Function tests pass
           - Routine now uses Channel and Process
           - Added Handle, Stream, and Channel

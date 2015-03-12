@@ -11,20 +11,29 @@ use Class::Usul::Types     qw( BaseType Bool NonEmptySimpleStr
 use Scalar::Util           qw( blessed weaken );
 
 # Public attributes
-has 'autostart'   => is => 'ro',   isa => Bool,               default => TRUE;
+has 'autostart'   => is => 'ro',  isa => Bool,               default => TRUE;
 
-has 'description' => is => 'ro',   isa => NonEmptySimpleStr, required => TRUE;
+has 'description' => is => 'ro',  isa => NonEmptySimpleStr, required => TRUE;
 
-has 'loop'        => is => 'rwp',  isa => Object,            required => TRUE;
+has 'loop'        => is => 'rwp', isa => Object,            required => TRUE;
 
-has 'name'        => is => 'ro',   isa => NonEmptySimpleStr, required => TRUE;
+has 'name'        => is => 'ro',  isa => NonEmptySimpleStr, required => TRUE;
 
-has 'pid'         => is => 'rwp',  isa => PositiveInt,        default => 0;
+has 'pid'         => is => 'rwp', isa => PositiveInt,        default => 0;
 
 # Private attributes
-has '_usul'       => is => 'ro',   isa => BaseType,
+has '_usul'       => is => 'ro',  isa => BaseType,
    handles        => [ qw( config debug lock log run_cmd ) ],
    init_arg       => 'builder', required => TRUE;
+
+# Construction
+around 'BUILDARGS' => sub {
+   my ($orig, $self, @args) = @_; my $attr = $orig->( $self, @args );
+
+   my $desc = delete $attr->{desc}; $attr->{description} //= $desc;
+
+   return $attr;
+};
 
 # Private methods
 my $_can_event = sub {

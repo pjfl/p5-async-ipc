@@ -127,26 +127,26 @@ sub set_handles {
 }
 
 sub start {
-   my $self = shift;
+   my $self = shift; my $started = FALSE;
 
    $self->is_running and return; $self->_set_is_running( TRUE );
 
    $self->read_handle  and $self->on_read_ready
-      and $self->want_readready( TRUE );
+      and $started = TRUE and $self->want_readready( TRUE );
    $self->write_handle and $self->on_write_ready
-      and $self->want_writeready( TRUE );
+      and $started = TRUE and $self->want_writeready( TRUE );
    $self->_set_is_closing( FALSE );
-   return;
+   return $started;
 }
 
 sub stop {
-   my $self = shift;
+   my $self = shift; my $stopped = FALSE;
 
    $self->is_running or return; $self->_set_is_running( FALSE );
 
-   $self->read_handle  and $self->want_readready( FALSE );
-   $self->write_handle and $self->want_writeready( FALSE );
-   return;
+   $self->read_handle  and $stopped = TRUE and $self->want_readready( FALSE );
+   $self->write_handle and $stopped = TRUE and $self->want_writeready( FALSE );
+   return $stopped;
 }
 
 1;

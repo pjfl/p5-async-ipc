@@ -15,7 +15,7 @@ around 'BUILDARGS' => sub {
 
    my $lock = $attr->{builder}->lock;
    my $code = $attr->{on_recv}->[ 0 ]; $attr->{on_recv}->[ 0 ] = sub {
-      $lock->reset( k => $_[ 0 ] ); $code->( @_ );
+      $lock->reset( k => $_[ 1 ] ); $code->( @_ );
    };
 
    return $attr;

@@ -21,10 +21,9 @@ sub wait_for (&) {
 
    $loop->once( 1 ) while (not $cond->() and not $timedout);
 
-   if ($timedout) {
-      die "Nothing was ready after 10 second wait; called at $callerfile line $callerline\n";
-   }
-   else { $loop->unwatch_time( $timerid ) }
+   $timedout and die "Nothing was ready after 10 second wait; called at $callerfile line $callerline\n";
+   $loop->unwatch_time( $timerid );
+   return;
 }
 
 my $max_calls   =  10;
@@ -80,9 +79,7 @@ for (sort { $a <=> $b } keys %{ $results }) {
 $count = () = keys %{ $results };
 
 is $count, $max_calls, 'All results present';
-undef $function;
-
-$loop->watch_child( 0 );
+undef $function; $loop->watch_child( 0 );
 
 done_testing;
 
