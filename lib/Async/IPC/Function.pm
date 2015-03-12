@@ -19,8 +19,6 @@ my $Indexes = {};
 # Public attributes
 has 'is_running'     => is => 'rwp', isa => Bool, default => TRUE;
 
-has 'max_calls'      => is => 'ro',  isa => PositiveInt, default => 0;
-
 has 'max_workers'    => is => 'ro',  isa => NonZeroPositiveInt, default => 1;
 
 has 'worker_args'    => is => 'ro',  isa => HashRef, builder => sub { {} };
@@ -70,7 +68,7 @@ around 'BUILDARGS' => sub {
 
    my $attr = {}; $args->{description} .= ' worker';
 
-   for my $k ( qw( builder description loop max_calls ) ) {
+   for my $k ( qw( builder description loop ) ) {
       defined $args->{ $k } and $attr->{ $k } = $args->{ $k };
    }
 

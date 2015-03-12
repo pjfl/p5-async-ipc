@@ -181,6 +181,9 @@ my $_flush_one_write = sub {
 
    defined $wrote or return $self->$_handle_write_error( $head, $ERRNO );
 
+   my $mesg = "Wrote ${wrote} bytes";
+
+   $self->log->debug( (log_leader 'debug', $self->name, $self->pid).$mesg );
    $head->on_write and $head->on_write->( $self, $wrote );
 
    unless (length $head->data) {

@@ -6,9 +6,10 @@ use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 10 $ =~ /\d+/gmx );
 
 use Moo;
 use Async::IPC::Loop;
-use Class::Usul::Constants qw( TRUE );
-use Class::Usul::Functions qw( ensure_class_loaded first_char );
+use Class::Usul::Constants qw( EXCEPTION_CLASS TRUE );
+use Class::Usul::Functions qw( arg_list ensure_class_loaded first_char throw );
 use Class::Usul::Types     qw( BaseType Object );
+use Unexpected::Functions  qw( Unspecified );
 
 # Public attributes
 has 'loop'    => is => 'lazy', isa => Object,
@@ -19,14 +20,18 @@ has 'builder' => is => 'ro',   isa => BaseType, required => TRUE;
 
 # Public methods
 sub new_notifier {
-   my ($self, %p) = @_; my $type = delete $p{type};
+   my $self  = shift; my $args = arg_list @_;
+
+   my $type  = delete $args->{type} or throw Unspecified, [ 'type' ];
 
    my $class = first_char $type eq '+' ? (substr $type, 1)
                                        : __PACKAGE__.'::'.(ucfirst $type);
 
    ensure_class_loaded $class;
 
-   return $class->new( builder => $self->builder, loop => $self->loop, %p, );
+   $args->{builder} //= $self->builder; $args->{loop} //= $self->loop;
+
+   return $class->new( $args );
 }
 
 1;

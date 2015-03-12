@@ -179,12 +179,7 @@ has 'write_mode'   => is => 'ro',   isa => $MODE_TYPE, default => 'sync';
 
 # Construction
 sub BUILD {
-   my $self = shift; $self->read_handle; $self->write_handle;
-
-   ($self->read_mode eq 'async' or $self->write_mode eq 'async')
-      and $self->stream;
-
-   return;
+   my $self = shift; $self->read_handle; $self->write_handle; return;
 }
 
 sub DEMOLISH {
