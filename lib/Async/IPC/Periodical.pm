@@ -6,8 +6,9 @@ use Moo;
 use Async::IPC::Functions  qw( log_leader );
 use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE TRUE );
 use Class::Usul::Functions qw( throw );
-use Class::Usul::Types     qw( Bool CodeRef NonZeroPositiveInt
+use Class::Usul::Types     qw( Bool CodeRef NonZeroPositiveNum
                                SimpleStr Undef );
+use English                qw( -no_match_vars );
 use Unexpected::Functions  qw( Unspecified );
 
 extends q(Async::IPC::Base);
@@ -15,9 +16,11 @@ extends q(Async::IPC::Base);
 # Public attributes
 has 'code'       => is => 'ro',  isa => CodeRef, required => TRUE;
 
-has 'interval'   => is => 'ro',  isa => NonZeroPositiveInt, default => 1;
+has 'interval'   => is => 'ro',  isa => NonZeroPositiveNum, default => 1;
 
 has 'is_running' => is => 'rwp', isa => Bool, default => FALSE;
+
+has '+pid'       => default => $PID;
 
 has 'time_spec'  => is => 'ro',  isa => SimpleStr | Undef;
 
@@ -32,10 +35,6 @@ sub BUILD {
 
 sub DEMOLISH {
    $_[ 0 ]->stop; return;
-}
-
-sub _build_pid {
-   return $_[ 0 ]->loop->uuid;
 }
 
 # Public methods
@@ -140,6 +139,10 @@ invocations of the code reference
 
 A boolean that default to false. Is set to true when the notifier starts.
 Gets set to false by calling the C<stop> method
+
+=item C<pid>
+
+This processes id
 
 =item C<time_spec>
 

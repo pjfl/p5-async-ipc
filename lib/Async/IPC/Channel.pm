@@ -4,7 +4,6 @@ use namespace::autoclean;
 
 use Moo;
 use Async::IPC::Functions  qw( log_leader read_error read_exactly );
-use Async::IPC::Stream;
 use Class::Usul::Constants qw( FALSE NUL TRUE );
 use Class::Usul::Functions qw( ensure_class_loaded nonblocking_write_pipe_pair
                                throw );
@@ -135,12 +134,11 @@ my $_send_frozen = sub {
 };
 
 my $_build_stream = sub {
-   my $self = shift; return Async::IPC::Stream->new
-      (  autoflush    => TRUE,
+   my $self = shift; return $self->factory->new_notifier
+      (  type         => 'stream',
+         autoflush    => TRUE,
          autostart    => FALSE,
-         builder      => $self->_usul,
          description  => $self->description.' stream',
-         loop         => $self->loop,
          name         => $self->name.'_stream',
          on_read      => $self->capture_weakself( $_on_stream_read ),
          read_handle  => $self->read_handle,

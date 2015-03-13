@@ -5,7 +5,6 @@ use namespace::autoclean;
 
 use Moo;
 use Async::IPC::Functions  qw( log_leader );
-use Async::IPC::Routine;
 use Class::Usul::Constants qw( FALSE OK TRUE );
 use Class::Usul::Functions qw( bson64id );
 use Class::Usul::Types     qw( ArrayRef Bool HashRef NonZeroPositiveInt
@@ -31,15 +30,17 @@ has 'worker_objects' => is => 'ro',  isa => HashRef[Object],
 
 # Private methods
 my $_new_worker = sub {
-   my ($self, $index) = @_; my $args = { %{ $self->worker_args } };
+   my ($self, $index) = @_;
 
-   my $on_exit = $args->{on_exit} // sub {};
    my $workers = $self->worker_objects;
+   my $args    = { %{ $self->worker_args } };
+   my $on_exit = delete $args->{on_exit} // sub {};
 
-   $args->{description} .= " ${index}";
+   $args->{name       } //= $self->name.'_worker';
+   $args->{description} //= $self->description." worker ${index}";
    $args->{on_exit} = sub { delete $workers->{ $_[ 1 ] }; $on_exit->( @_ ) };
 
-   my $worker = Async::IPC::Routine->new( $args ); my $pid = $worker->pid;
+   my $worker = $self->factory->new_notifier( $args ); my $pid = $worker->pid;
 
    $workers->{ $pid } = $worker; $self->worker_index->[ $index ] = $pid;
 
@@ -64,19 +65,14 @@ my $_next_worker = sub {
 
 # Construction
 around 'BUILDARGS' => sub {
-   my ($orig, $self, @args) = @_; my $args = $orig->( $self, @args );
+   my ($orig, $self, @args) = @_; my $attr = $orig->( $self, @args );
 
-   my $attr = {}; $args->{description} .= ' worker';
+   my $args = { type => delete $attr->{worker_type} // 'routine' };
 
-   for my $k ( qw( builder description loop ) ) {
-      defined $args->{ $k } and $attr->{ $k } = $args->{ $k };
+   for my $k ( qw( max_calls on_exit on_recv on_return ) ) {
+      my $v = delete $attr->{ $k }; defined $v and $args->{ $k } = $v;
    }
 
-   for my $k ( qw( autostart max_workers name ) ) {
-      my $v = delete $args->{ $k }; defined $v and $attr->{ $k } = $v;
-   }
-
-   $args->{name} = delete $args->{worker_name} || $attr->{name}.'_worker';
    $attr->{worker_args} = $args;
    return $attr;
 };

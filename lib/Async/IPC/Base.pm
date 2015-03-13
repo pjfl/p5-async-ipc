@@ -3,6 +3,7 @@ package Async::IPC::Base;
 use namespace::autoclean;
 
 use Moo;
+use Async::IPC;
 use Async::IPC::Functions  qw( log_leader );
 use Class::Usul::Constants qw( FALSE TRUE );
 use Class::Usul::Functions qw( is_coderef throw );
@@ -11,15 +12,18 @@ use Class::Usul::Types     qw( BaseType Bool NonEmptySimpleStr
 use Scalar::Util           qw( blessed weaken );
 
 # Public attributes
-has 'autostart'   => is => 'ro',  isa => Bool,               default => TRUE;
+has 'autostart'   => is => 'ro',   isa => Bool,               default => TRUE;
 
-has 'description' => is => 'ro',  isa => NonEmptySimpleStr, required => TRUE;
+has 'description' => is => 'ro',   isa => NonEmptySimpleStr, required => TRUE;
 
-has 'loop'        => is => 'rwp', isa => Object,            required => TRUE;
+has 'factory'     => is => 'lazy', isa => Object,             builder => sub {
+   Async::IPC->new( builder => $_[ 0 ]->_usul, loop => $_[ 0 ]->loop, ) };
 
-has 'name'        => is => 'ro',  isa => NonEmptySimpleStr, required => TRUE;
+has 'loop'        => is => 'rwp',  isa => Object,            required => TRUE;
 
-has 'pid'         => is => 'rwp', isa => PositiveInt,        default => 0;
+has 'name'        => is => 'ro',   isa => NonEmptySimpleStr, required => TRUE;
+
+has 'pid'         => is => 'rwp',  isa => PositiveInt,        default => 0;
 
 # Private attributes
 has '_usul'       => is => 'ro',  isa => BaseType,
@@ -81,6 +85,19 @@ sub maybe_invoke_event {
    my $code = $self->$_can_event( $ev_name ) or return;
 
    return $self->$_invoke_event( $ev_name, $code, @args );
+}
+
+sub replace_weakself {
+   my ($self, $code) = @_; weaken $self;
+
+   is_coderef $code or $self->can( $code ) or throw
+      'Package [_1] cannot locate method [_2]', [ blessed $self, $code ];
+
+   return sub {
+      $self or return; my $cb = (is_coderef $code) ? $code : $self->$code;
+
+      shift @_; unshift @_, $self; goto &$cb;
+   };
 }
 
 1;
@@ -150,6 +167,13 @@ construction
 Returns the code reference of then handler if this object can handle the named
 event, otherwise returns false
 
+=head2 C<capture_weakself>
+
+   $code_ref = $self->capture_weakself( $code_ref );
+
+Returns a code reference which when called passes a weakened copy of C<$self>
+to the supplied code reference
+
 =head2 C<invoke_event>
 
    $result = $self->invoke_event( 'event_name', @args );
@@ -160,12 +184,11 @@ See L</maybe_invoke_event>
 
    $result = $self->maybe_invoke_event( 'event_name', @args );
 
-=head2 C<capture_weakself>
+=head2 C<replace_weakself>
 
    $code_ref = $self->capture_weakself( $code_ref );
 
-Returns a code reference which when called passes a weakened copy of C<$self>
-to the supplied code reference
+Like L</capture_weakself> but shifts the original invocant off the stack first
 
 =head1 Diagnostics
 

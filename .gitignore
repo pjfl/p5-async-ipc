@@ -22,6 +22,7 @@ README
 README.pod
 t/ipc_srlock*
 t/worker*
+t/*.err
 t/*.log
 *.tar.gz
 Async-IPC-*

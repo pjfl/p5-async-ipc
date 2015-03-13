@@ -56,11 +56,11 @@ my $_call_handler = sub {
       $any_change++;
    }
 
-   for my $stat (@{ $_stat_fields->() }) {
-      $old->{ $stat } == $new->{ $stat } and next; $any_change++;
+   for my $field (@{ $_stat_fields->() }) {
+      $old->{ $field } == $new->{ $field } and next; $any_change++;
 
       $self->$_maybe_invoke_event
-         ( "on_${stat}_changed", $old->{ $stat }, $new->{ $stat } );
+         ( "on_${field}_changed", $old->{ $field }, $new->{ $field } );
    }
 
    if ($any_change) {
@@ -74,10 +74,10 @@ my $_call_handler = sub {
 around 'BUILDARGS' => sub {
    my ($orig, $self, @args) = @_; my $attr = $orig->( $self, @args );
 
-   for my $stat ('devino', @{ $_stat_fields->() }, 'stat') {
-      my $code = delete $attr->{ "on_${stat}_changed" };
+   for my $field ('devino', @{ $_stat_fields->() }, 'stat') {
+      my $code = delete $attr->{ "on_${field}_changed" };
 
-      defined $code and $attr->{events}->{ "on_${stat}_changed" } //= $code;
+      defined $code and $attr->{events}->{ "on_${field}_changed" } //= $code;
    }
 
    my $path; ($path = $attr->{path} and blessed $path

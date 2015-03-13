@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - Added FileStream
           - Routine call channel now async
           - Added missing Loop::watching_* methods
           - Function tests pass

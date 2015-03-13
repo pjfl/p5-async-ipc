@@ -80,10 +80,9 @@ $count = () = keys %{ $results };
 
 is $count, $max_calls, 'All results present';
 undef $function; $loop->watch_child( 0 );
+$prog->config->logfile->unlink;
 
 done_testing;
-
-#$prog->config->logfile->unlink;
 
 # Local Variables:
 # mode: perl

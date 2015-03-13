@@ -3,9 +3,7 @@ package Async::IPC::Routine;
 use namespace::autoclean;
 
 use Moo;
-use Async::IPC::Channel;
 use Async::IPC::Functions  qw( log_leader terminate );
-use Async::IPC::Process;
 use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE TRUE );
 use Class::Usul::Functions qw( bson64id is_arrayref throw );
 use Class::Usul::Types     qw( ArrayRef Bool CodeRef
@@ -28,10 +26,9 @@ my $_start_channels = sub {
 my $_build_channel = sub {
    my ($self, $dirn, $channel_no, %args) = @_;
 
-   return Async::IPC::Channel->new
-      ( builder     => $self->_usul,
+   return $self->factory->new_notifier
+      ( type        => 'channel',
         description => $self->description." ${dirn} channel ${channel_no}",
-        loop        => $self->loop,
         name        => $self->name."_${dirn}_ch${channel_no}",
         %args );
 };
@@ -78,12 +75,13 @@ my $_build_call_chs = sub {
 };
 
 my $_build_child = sub {
-   my $self = shift;
-
-   return Async::IPC::Process->new
-      ( { %{ $self->child_args },
-          code => (defined $self->on_recv->[ 1 ])
-               ?  $self->async_call_handler : $self->sync_call_handler } );
+   my $self = shift; return $self->factory->new_notifier
+      ( { type        => 'process',
+          code        => (defined $self->on_recv->[ 1 ])
+                       ? $self->async_call_handler : $self->sync_call_handler,
+          description => $self->description,
+          name        => $self->name,
+          %{ $self->child_args }, } );
 };
 
 my $_build_return_chs = sub {
@@ -124,10 +122,6 @@ around 'BUILDARGS' => sub {
    my ($orig, $self, @args) = @_; my $attr = $orig->( $self, @args );
 
    my $args = { autostart => FALSE };
-
-   for my $k ( qw( builder description loop name ) ) {
-      $args->{ $k } = $attr->{ $k };
-   }
 
    for my $k ( qw( on_exit ) ) {
       my $v = delete $attr->{ $k }; defined $v and $args->{ $k } = $v;
@@ -185,6 +179,31 @@ sub call_channel {
    return $self->call_chs->[ $channel_no ]->send( [ @args ] );
 }
 
+sub pid {
+   my $self = shift; return $self->is_running ? $self->child->pid : undef;
+}
+
+sub start {
+   my $self = shift;
+
+   $self->is_running and return; $self->_set_is_running( TRUE );
+
+   $self->child->start;
+   $self->return_chs->[ 0 ] and $_start_channels->( $self->return_chs, 'read' );
+   $_start_channels->( $self->call_chs, 'write' );
+   return TRUE;
+}
+
+sub stop {
+   my $self = shift;
+
+   $self->is_running or return; $self->_set_is_running( FALSE );
+
+   $self->child->stop;
+   # TODO: Add stop stop_channels
+   return TRUE;
+}
+
 sub sync_call_handler {
    my $self       = shift;
    my $call_chs   = $self->call_chs;
@@ -223,31 +242,6 @@ sub sync_call_handler {
 
       return;
    };
-}
-
-sub pid {
-   my $self = shift; return $self->is_running ? $self->child->pid : undef;
-}
-
-sub start {
-   my $self = shift;
-
-   $self->is_running and return; $self->_set_is_running( TRUE );
-
-   $self->child->start;
-   $self->return_chs->[ 0 ] and $_start_channels->( $self->return_chs, 'read' );
-   $_start_channels->( $self->call_chs, 'write' );
-   return TRUE;
-}
-
-sub stop {
-   my $self = shift;
-
-   $self->is_running or return; $self->_set_is_running( FALSE );
-
-   $self->child->stop;
-   # TODO: Add stop stop_channels
-   return TRUE;
 }
 
 1;
