@@ -3,13 +3,13 @@ package Async::IPC::Process;
 use namespace::autoclean;
 
 use Moo;
-use Async::IPC::Functions  qw( log_leader );
+use Async::IPC::Functions  qw( log_debug log_info );
 use Class::Usul::Constants qw( FALSE TRUE );
 use Class::Usul::Functions qw( is_coderef );
-use Class::Usul::Types     qw( ArrayRef CodeRef NonEmptySimpleStr Undef );
+use Class::Usul::Types     qw( ArrayRef CodeRef HashRef
+                               NonEmptySimpleStr Undef );
 use English                qw( -no_match_vars );
 use POSIX                  qw( WEXITSTATUS );
-use Scalar::Util           qw( weaken );
 
 extends q(Async::IPC::Base);
 
@@ -20,9 +20,7 @@ my $_watch_child = sub {
    my $on_exit = sub {
       my $self = shift; my $pid = shift; my $rv = WEXITSTATUS( shift );
 
-      my $mesg = ucfirst $self->description." stopped rv ${rv}";
-
-      $self->log->info( (log_leader 'info', $self->name, $pid).$mesg );
+      log_info $self, ucfirst $self->description." stopped rv ${rv}";
 
       return $self->on_exit ? $self->on_exit->( $self, $pid, $rv ) : TRUE;
    };
@@ -32,10 +30,12 @@ my $_watch_child = sub {
 };
 
 # Public attributes
-has 'code'    => is => 'ro', isa => CodeRef | ArrayRef | NonEmptySimpleStr,
-   required   => TRUE;
+has 'child_args' => is => 'ro', isa => HashRef, builder => sub { {} };
 
-has 'on_exit' => is => 'ro', isa => CodeRef | Undef;
+has 'code'       => is => 'ro', isa => CodeRef | ArrayRef | NonEmptySimpleStr,
+   required      => TRUE;
+
+has 'on_exit'    => is => 'ro', isa => CodeRef | Undef;
 
 # Construction
 sub BUILD {
@@ -55,7 +55,8 @@ sub start {
    my $self = shift; $self->is_running and return;
    my $code = $self->code;
    my $temp = $self->config->tempdir;
-   my $args = { async => TRUE, ignore_zombies => FALSE };
+   my $args = { %{ $self->child_args },
+                async => TRUE, ignore_zombies => FALSE, };
    my $name = $self->config->pathname->abs2rel.' - '.(lc $self->name);
    my $cmd  = (is_coderef $code)
             ? [ $self->capture_weakself( sub {
@@ -66,18 +67,15 @@ sub start {
 
    $self->_set_pid( my $pid = $self->run_cmd( $cmd, $args )->pid );
 
-   $self->$_watch_child( $pid ); my $mesg = 'Started '.$self->description;
+   $self->$_watch_child( $pid ); log_info $self, 'Started '.$self->description;
 
-   $self->log->info( (log_leader 'info', $self->name, $pid).$mesg );
    return TRUE;
 }
 
 sub stop {
    my $self = shift; $self->is_running or return;
 
-   my $mesg = 'Stopping '.$self->description;
-
-   $self->log->debug( (log_leader 'debug', $self->name, $self->pid).$mesg );
+   log_debug $self, 'Stopping '.$self->description;
    CORE::kill 'TERM', $self->pid;
    return TRUE;
 }
@@ -115,6 +113,10 @@ Execute a child process with input / output channels
 Defines the following attributes;
 
 =over 3
+
+=item C<child_args>
+
+Optional hash reference passed to L<run command|Class::Usul::Cmd>
 
 =item C<code>
 

@@ -3,7 +3,7 @@ package Async::IPC::Stream;
 use namespace::autoclean;
 
 use Moo;
-use Async::IPC::Functions  qw( log_leader );
+use Async::IPC::Functions  qw( log_debug log_error );
 use Encode 2.11            qw( find_encoding STOP_AT_PARTIAL );
 use Errno                  qw( EAGAIN EWOULDBLOCK EINTR EPIPE );
 use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE NUL TRUE );
@@ -181,9 +181,7 @@ my $_flush_one_write = sub {
 
    defined $wrote or return $self->$_handle_write_error( $head, $ERRNO );
 
-   my $mesg = "Wrote ${wrote} bytes";
-
-   $self->log->debug( (log_leader 'debug', $self->name, $self->pid).$mesg );
+   log_debug $self, "Wrote ${wrote} bytes";
    $head->on_write and $head->on_write->( $self, $wrote );
 
    unless (length $head->data) {
@@ -199,10 +197,9 @@ my $_do_read = sub {
 
    while (TRUE) {
       my $data;
-      my $red  = $self->reader->( $self, $handle, $data, $self->read_len );
-      my $lead = log_leader 'debug', $self->name, $self->pid;
+      my $red = $self->reader->( $self, $handle, $data, $self->read_len );
 
-      $self->log->debug( "${lead}Read ".($red // 'undef').' bytes' );
+      log_debug $self, 'Read '.($red // 'undef').' bytes';
       defined $red or return $self->$_handle_read_error( $ERRNO );
       $self->_set_read_eof( my $eof = ($red == 0) );
 
@@ -424,9 +421,8 @@ sub close_when_empty {
 sub write {
    my ($self, $data, %params) = @_;
 
-   my $lead; $self->stream_closing
-      and $lead = log_leader( 'error', $self->name, $self->pid )
-      and $self->log->error( "${lead}Cannot write to a closing Stream" )
+   $self->stream_closing
+      and log_error( $self, 'Cannot write to a closing stream' )
       and return;
 
    my $handle = $self->write_handle or throw Unspecified, [ 'write handle' ];

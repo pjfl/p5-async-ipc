@@ -3,7 +3,7 @@ package Async::IPC::Periodical;
 use namespace::autoclean;
 
 use Moo;
-use Async::IPC::Functions  qw( log_leader );
+use Async::IPC::Functions  qw( log_debug );
 use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE TRUE );
 use Class::Usul::Functions qw( throw );
 use Class::Usul::Types     qw( Bool CodeRef NonZeroPositiveNum
@@ -67,9 +67,7 @@ sub start {
 
    $self->is_running and return; $self->_set_is_running( TRUE );
 
-   my $lead = log_leader 'debug', $self->name, $self->pid;
-
-   $self->log->debug( "${lead}Starting ".$self->description );
+   log_debug $self, 'Starting '.$self->description;
 
    my $cb = $self->capture_weakself( $self->code );
 
@@ -82,9 +80,7 @@ sub stop {
 
    $self->is_running or return; $self->_set_is_running( FALSE );
 
-   my $lead = log_leader 'debug', $self->name, $self->pid;
-
-   $self->log->debug( "${lead}Stopping ".$self->description );
+   log_debug $self, 'Stopping '.$self->description;
    $self->loop->unwatch_time( $self->pid );
    return TRUE;
 }

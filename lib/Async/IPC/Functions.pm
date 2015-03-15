@@ -8,7 +8,8 @@ use Class::Usul::Functions qw( pad );
 use English                qw( -no_match_vars );
 use Storable               qw( nfreeze );
 
-our @EXPORT_OK = ( qw( log_leader read_error read_exactly terminate ));
+our @EXPORT_OK = ( qw( log_debug log_error log_info
+                       read_error read_exactly terminate ));
 
 # Private functions
 my $_padid = sub {
@@ -21,25 +22,39 @@ my $_padkey = sub {
    return pad uc( $key ), $w, SPC, 'left';
 };
 
-# Public functions
-sub log_leader ($$;$) {
+my $_log_leader = sub {
    my $dkey = $_padkey->( $_[ 0 ], $_[ 1 ] ); my $did = $_padid->( $_[ 2 ] );
 
    return "${dkey}[${did}]: ";
+};
+
+# Public functions
+sub log_debug ($$) {
+   my ($self, $mesg) = @_;
+
+   $self->log->debug( $_log_leader->( 'debug', $self->name, $self->pid).$mesg );
+   return TRUE;
+}
+
+sub log_error ($$) {
+   my ($self, $mesg) = @_;
+
+   $self->log->error( $_log_leader->( 'error', $self->name, $self->pid).$mesg );
+   return TRUE;
+}
+
+sub log_info ($$) {
+   my ($self, $mesg) = @_;
+
+   $self->log->info( $_log_leader->( 'info', $self->name, $self->pid).$mesg );
+   return TRUE;
 }
 
 sub read_error ($$) {
-   my ($notifier, $red) = @_; my $pid = $notifier->pid;
+   my ($self, $red) = @_;
 
-   my $log = $notifier->log; my $name = $notifier->name;
-
-   unless (defined $red) {
-      $log->error( log_leader( 'error', $name, $pid ).$OS_ERROR ); return TRUE;
-   }
-
-   unless (length $red) {
-      $log->debug( log_leader( 'debug', $name, $pid ).'EOF' ); return TRUE;
-   }
+   not defined $red and log_error( $self, $OS_ERROR ) and return TRUE;
+   not length $red  and log_debug( $self, 'EOF' )     and return TRUE;
 
    return FALSE;
 }
@@ -57,8 +72,10 @@ sub read_exactly ($$$) {
 }
 
 sub terminate ($) {
-   $_[ 0 ]->unwatch_signal( 'QUIT' ); $_[ 0 ]->unwatch_signal( 'TERM' );
-   $_[ 0 ]->stop;
+   my $loop = shift;
+
+   $loop->unwatch_signal( 'QUIT' ); $loop->unwatch_signal( 'TERM' );
+   $loop->stop;
    return TRUE;
 }
 
@@ -93,11 +110,26 @@ Defines no attributes
 
 =head1 Subroutines/Methods
 
-=head2 C<log_leader>
+=head2 C<log_debug>
 
-   $leader = log_leader $level, $key, $id;
+   log_debug $invocant, $message;
 
-Returns the leader string for a log message
+Logs the message at the debug level. The C<$invocant> should be a object
+reference with C<name> and C<pid> attributes
+
+=head2 C<log_error>
+
+   log_error $invocant, $message;
+
+Logs the message at the error level. The C<$invocant> should be a object
+reference with C<name> and C<pid> attributes
+
+=head2 C<log_info>
+
+   log_info $invocant, $message;
+
+Logs the message at the info level. The C<$invocant> should be a object
+reference with C<name> and C<pid> attributes
 
 =head2 C<read_error>
 

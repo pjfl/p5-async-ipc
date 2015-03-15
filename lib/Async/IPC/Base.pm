@@ -4,7 +4,7 @@ use namespace::autoclean;
 
 use Moo;
 use Async::IPC;
-use Async::IPC::Functions  qw( log_leader );
+use Async::IPC::Functions  qw( log_debug );
 use Class::Usul::Constants qw( FALSE TRUE );
 use Class::Usul::Functions qw( is_coderef throw );
 use Class::Usul::Types     qw( BaseType Bool NonEmptySimpleStr
@@ -49,9 +49,7 @@ my $_can_event = sub {
 my $_invoke_event = sub {
    my ($self, $ev_name, $code, @args) = @_;
 
-   my $lead = log_leader 'debug', $self->name, $self->pid;
-
-   $self->log->debug( "${lead}Invoke event ${ev_name}" );
+   log_debug $self, "Invoke event ${ev_name}";
 
    return $code->( $self, @args );
 };

@@ -4,7 +4,7 @@ use feature 'state';
 use namespace::autoclean;
 
 use Moo;
-use Async::IPC::Functions  qw( log_leader );
+use Async::IPC::Functions  qw( log_debug );
 use Class::Usul::Constants qw( FALSE OK TRUE );
 use Class::Usul::Functions qw( bson64id );
 use Class::Usul::Types     qw( ArrayRef Bool HashRef NonZeroPositiveInt
@@ -69,7 +69,7 @@ around 'BUILDARGS' => sub {
 
    my $args = { type => delete $attr->{worker_type} // 'routine' };
 
-   for my $k ( qw( max_calls on_exit on_recv on_return ) ) {
+   for my $k ( qw( child_args max_calls on_exit on_recv on_return ) ) {
       my $v = delete $attr->{ $k }; defined $v and $args->{ $k } = $v;
    }
 
@@ -100,9 +100,7 @@ sub close {
 }
 
 sub start {
-   my $self = shift; my $lead = log_leader 'debug', $self->name, $self->pid;
-
-   $self->log->debug( "${lead}Starting ".$self->description.' pool' );
+   my $self = shift; log_debug $self, 'Starting '.$self->description.' pool';
 
    $self->$_next_worker for (0 .. $self->max_workers - 1);
 
@@ -114,9 +112,7 @@ sub stop {
 
    $self->is_running or return; $self->_set_is_running( FALSE );
 
-   my $lead = log_leader 'debug', $self->name, $self->pid;
-
-   $self->log->debug( "${lead}Stopping ".$self->description.' pool' );
+   log_debug $self, 'Stopping '.$self->description.' pool';
 
    my $workers = $self->worker_objects;
 

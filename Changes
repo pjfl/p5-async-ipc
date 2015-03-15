@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - Made log_leader private.  Added log_*
           - Added FileStream
           - Routine call channel now async
           - Added missing Loop::watching_* methods

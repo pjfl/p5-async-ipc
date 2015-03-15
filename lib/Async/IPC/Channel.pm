@@ -3,7 +3,7 @@ package Async::IPC::Channel;
 use namespace::autoclean;
 
 use Moo;
-use Async::IPC::Functions  qw( log_leader read_error read_exactly );
+use Async::IPC::Functions  qw( log_debug log_error read_error read_exactly );
 use Class::Usul::Constants qw( FALSE NUL TRUE );
 use Class::Usul::Functions qw( ensure_class_loaded nonblocking_write_pipe_pair
                                throw );
@@ -119,16 +119,10 @@ my $_send_frozen = sub {
 
    $self->write_mode eq 'async' and return $self->stream->write( $bytes );
 
-   my $len  = syswrite $self->write_handle, $bytes, length $bytes; my $lead;
+   my $len = syswrite $self->write_handle, $bytes, length $bytes;
 
-   if (defined $len) {
-      $lead = log_leader 'debug', $self->name, $self->pid;
-      $self->log->debug( "${lead}Wrote ${len} bytes" );
-   }
-   else {
-      $lead = log_leader 'error', $self->name, $self->pid;
-      $self->log->error( $lead.$OS_ERROR );
-   }
+   if (defined $len) { log_debug $self, "Wrote ${len} bytes" }
+   else { log_error $self, $OS_ERROR }
 
    return $len;
 };

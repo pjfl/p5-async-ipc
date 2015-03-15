@@ -3,7 +3,7 @@ package Async::IPC::Routine;
 use namespace::autoclean;
 
 use Moo;
-use Async::IPC::Functions  qw( log_leader terminate );
+use Async::IPC::Functions  qw( log_error terminate );
 use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE TRUE );
 use Class::Usul::Functions qw( bson64id is_arrayref throw );
 use Class::Usul::Types     qw( ArrayRef Bool CodeRef
@@ -41,14 +41,14 @@ my $_build_async_recv_handler = sub {
    my $return_ch = $self->return_chs->[ $ch_no ];
 
    return sub {
-      my ($self, $param) = @_; my $log = $self->log;
+      my ($self, $param) = @_;
 
       try {
          my $rv = $code->( $self, @{ $param } );
 
          $return_ch and $return_ch->send( [ $param->[ 0 ], $rv ] );
       }
-      catch { $log->error( (log_leader 'error', $self->name, $self->pid).$_ ) };
+      catch { log_error $self, $_ };
 
       $max_calls and ++$count >= $max_calls and terminate $self->loop;
       return TRUE;
@@ -123,7 +123,7 @@ around 'BUILDARGS' => sub {
 
    my $args = { autostart => FALSE };
 
-   for my $k ( qw( on_exit ) ) {
+   for my $k ( qw( child_args on_exit ) ) {
       my $v = delete $attr->{ $k }; defined $v and $args->{ $k } = $v;
    }
 
@@ -233,9 +233,7 @@ sub sync_call_handler {
                }
             }
          }
-         catch {
-            $log->error( (log_leader 'error', $self->name, $self->pid).$_ );
-         };
+         catch { log_error $self, $_ };
 
          defined $param or last; $max_calls and ++$count >= $max_calls and last;
       }

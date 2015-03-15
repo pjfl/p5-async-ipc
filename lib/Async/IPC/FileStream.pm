@@ -3,7 +3,7 @@ package Async::IPC::FileStream;
 use namespace::autoclean;
 
 use Moo;
-use Async::IPC::Functions  qw( log_leader );
+use Async::IPC::Functions  qw( log_debug );
 use Class::Usul::Constants qw( FALSE NUL TRUE );
 use Class::Usul::Functions qw( throw );
 use Class::Usul::Types     qw( Bool CodeRef HashRef Maybe Object PositiveInt );
@@ -24,11 +24,10 @@ my $_build_file = sub {
 
 my $_build_on_devino_changed = sub {
    return sub {
-      my $self = shift or return; my $mesg = 'Device inode changed';
+      my $self = shift or return; log_debug $self, 'Device inode changed';
 
-      $self->_set_renamed( TRUE );
-      $self->log->debug( (log_leader 'debug', $self->name, $self->pid).$mesg );
-      $self->read_more;
+      $self->_set_renamed( TRUE ); $self->read_more;
+
       return;
    };
 };
@@ -37,14 +36,12 @@ my $_build_on_size_changed = sub {
    return sub {
       my $self = shift or return; my ($old_size, $new_size) = @_;
 
-      my $mesg = "File size ${new_size} bytes";
-
       if ($new_size < $self->last_size) {
          $self->maybe_invoke_event( 'on_truncated' ); $self->_set_last_pos( 0 );
       }
 
+      log_debug $self, "File size ${new_size} bytes";
       $self->_set_last_size( $new_size );
-      $self->log->debug( (log_leader 'debug', $self->name, $self->pid).$mesg );
       $self->read_more;
       return;
    };
@@ -53,8 +50,7 @@ my $_build_on_size_changed = sub {
 my $_toggle_read_watcher = sub {
    my ($self, $want) = @_;
 
-   if ($want) { $self->file->is_running or $self->file->start }
-   else { $self->file->stop }
+   if ($want) { $self->file->start } else { $self->file->stop }
 
    return;
 };
@@ -131,10 +127,7 @@ sub read_more {
       $self->loop->watch_idle( $self->loop->uuid, sub { $self->read_more } );
    }
    elsif ($self->renamed) {
-      my $mesg = 'Reopening for rename';
-
-      $self->log->debug( (log_leader 'debug', $self->name, $self->pid).$mesg );
-      $self->_set_last_size( 0 );
+      $self->_set_last_size( 0 ); log_debug $self, 'Reopening for rename';
 
       if ($self->last_pos) {
          $self->maybe_invoke_event( 'on_truncated' );
@@ -171,7 +164,7 @@ sub seek_to_last {
 
    $horizon < 0 and $horizon = 0;
 
-   my $prev = NUL; my $path = $self->file->path->blocksize( $blocksize );
+   my $prev = NUL; my $path = $self->file->path->block_size( $blocksize );
 
    my $re   = ref $str_pattern ? $str_pattern : qr{ \Q$str_pattern\E }mx;
 
