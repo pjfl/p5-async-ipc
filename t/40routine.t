@@ -7,12 +7,11 @@ use File::DataClass::IO;
 
 use_ok 'Async::IPC';
 
-my $prog        =  Class::Usul::Programs->new
-   (  config    => { appclass => 'Class::Usul', tempdir => 't' },
-      debug     => 1, noask => 1, );
-my $factory     =  Async::IPC->new( builder => $prog );
-my $loop        =  $factory->loop;
-my $log         =  $prog->log;
+my $prog     =  Class::Usul::Programs->new
+   (  config => { appclass => 'Class::Usul', tempdir => 't' }, noask => 1, );
+my $factory  =  Async::IPC->new( builder => $prog );
+my $loop     =  $factory->loop;
+my $log      =  $prog->log;
 
 my $max_calls   =  10;
 my $results     =  {};
@@ -43,9 +42,10 @@ my $count = () = keys %{ $results };
 
 is $count, $max_calls, 'All results present';
 
-$prog->config->logfile->unlink;
+my $err = io [ 't', 'routine_test.err' ];
 
-my $err = io [ 't', 'routine_test.err' ]; $err->exists and $err->unlink;
+$err->exists and not $prog->debug and $err->unlink;
+$prog->debug or $prog->config->logfile->unlink;
 
 done_testing;
 

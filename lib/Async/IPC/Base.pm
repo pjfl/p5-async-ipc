@@ -5,7 +5,7 @@ use namespace::autoclean;
 use Moo;
 use Async::IPC;
 use Async::IPC::Functions  qw( log_debug );
-use Class::Usul::Constants qw( FALSE TRUE );
+use Class::Usul::Constants qw( FALSE TRUE UNDEFINED_RV );
 use Class::Usul::Functions qw( is_coderef throw );
 use Class::Usul::Types     qw( BaseType Bool NonEmptySimpleStr
                                Object PositiveInt );
@@ -51,7 +51,7 @@ my $_invoke_event = sub {
 
    log_debug $self, "Invoke event ${ev_name}";
 
-   return $code->( $self, @args );
+   return $code->( $self, @args ) // UNDEFINED_RV;
 };
 
 # Public methods

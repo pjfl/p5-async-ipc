@@ -35,7 +35,7 @@ sub once {
 }
 
 sub start {
-   my $self = shift; (local $self->{cv} = AnyEvent->condvar)->recv; return;
+   my $self = shift; return (local $self->{cv} = AnyEvent->condvar)->recv;
 }
 
 sub start_nb {
@@ -165,7 +165,7 @@ sub unwatch_signal {
 sub watch_time {
    my ($self, $id, $cb, $after, $interval) = @_;
 
-   defined $interval and $interval eq 'abs' and $after -= time;
+   defined $interval and $interval eq 'abs' and $after -= AnyEvent->now;
    defined $interval and $interval =~ m{ \A (?: abs | rel ) \z }mx
        and $interval = 0;
 

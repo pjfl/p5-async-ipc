@@ -6,12 +6,11 @@ use Class::Usul::Functions qw( sum );
 
 use_ok 'Async::IPC';
 
-my $prog        =  Class::Usul::Programs->new
-   (  config    => { appclass => 'Class::Usul', tempdir => 't' },
-      debug     => 1, noask => 1, );
-my $factory     =  Async::IPC->new( builder => $prog );
-my $loop        =  $factory->loop;
-my $log         =  $prog->log;
+my $prog     =  Class::Usul::Programs->new
+   (  config => { appclass => 'Class::Usul', tempdir => 't' }, noask => 1, );
+my $factory  =  Async::IPC->new( builder => $prog );
+my $loop     =  $factory->loop;
+my $log      =  $prog->log;
 
 sub wait_for (&) {
    my ($cond) = @_; my (undef, $callerfile, $callerline) = caller;
@@ -80,7 +79,7 @@ $count = () = keys %{ $results };
 
 is $count, $max_calls, 'All results present';
 undef $function; $loop->watch_child( 0 );
-$prog->config->logfile->unlink;
+$prog->debug or $prog->config->logfile->unlink;
 
 done_testing;
 

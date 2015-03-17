@@ -435,11 +435,11 @@ sub write {
    my $on_error = delete $params{on_error};
    my $len      = delete $params{write_len} // $self->write_len;
 
+   keys %params
+      and throw 'Write method unrecognised keys - '.(join ', ', keys %params);
+
    push @{ $self->writequeue }, Async::IPC::Writer->new
       ( $data, $len, $on_write, $on_flush, $on_error, FALSE );
-
-   keys %params
-      and throw 'Unrecognised keys for ->write - '.join( ', ', keys %params );
 
    if ($self->autoflush) {
       1 while (not $self->$_is_empty and $self->$_flush_one_write);

@@ -72,5 +72,6 @@ $handle->want_writeready( 1 );
 $loop->once;
 is $writeready, 1, 'Writeready while writeable';
 is $wrargs[ 0 ], $handle, 'Write ready args while writeable';
+$prog->debug or $prog->config->logfile->unlink;
 
 done_testing;

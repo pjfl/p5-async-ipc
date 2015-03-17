@@ -7,8 +7,7 @@ use File::Temp qw( tempfile );
 use_ok 'Async::IPC';
 
 my $prog     =  Class::Usul::Programs->new
-   (  config => { appclass => 'Class::Usul', tempdir => 't' },
-      debug  => 1, noask => 1, );
+   (  config => { appclass => 'Class::Usul', tempdir => 't' }, noask => 1, );
 my $factory  =  Async::IPC->new( builder => $prog );
 my $loop     =  $factory->loop;
 my $log      =  $prog->log;
@@ -132,7 +131,7 @@ sub wait_for (&) {
    $filestream->stop;
 }
 
-$prog->config->logfile->unlink;
+$prog->debug or $prog->config->logfile->unlink;
 
 done_testing;
 

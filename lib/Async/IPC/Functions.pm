@@ -6,6 +6,7 @@ use parent 'Exporter::Tiny';
 use Class::Usul::Constants qw( FAILED FALSE LANG NUL OK SPC TRUE );
 use Class::Usul::Functions qw( pad );
 use English                qw( -no_match_vars );
+use Scalar::Util           qw( blessed );
 use Storable               qw( nfreeze );
 
 our @EXPORT_OK = ( qw( log_debug log_error log_info
@@ -17,9 +18,14 @@ my $_padid = sub {
 };
 
 my $_padkey = sub {
-   my ($level, $key) = @_; my $w = 11 - length $level; $w < 1 and $w = 1;
+   my ($level, $key) = @_; my $w = 14 - length $level; $w < 1 and $w = 1;
 
    return pad uc( $key ), $w, SPC, 'left';
+};
+
+my $_log_attr = sub {
+   return blessed $_[ 0 ] ? ($_[ 0 ]->log, $_[ 0 ]->name, $_[ 0 ]->pid, $_[ 1 ])
+                          : @_;
 };
 
 my $_log_leader = sub {
@@ -29,24 +35,24 @@ my $_log_leader = sub {
 };
 
 # Public functions
-sub log_debug ($$) {
-   my ($self, $mesg) = @_;
+sub log_debug ($$;$$) {
+   my ($log, $name, $pid, $mesg) = $_log_attr->( @_ );
 
-   $self->log->debug( $_log_leader->( 'debug', $self->name, $self->pid).$mesg );
+   $log->debug( $_log_leader->( 'debug', $name, $pid).$mesg );
    return TRUE;
 }
 
-sub log_error ($$) {
-   my ($self, $mesg) = @_;
+sub log_error ($$;$$) {
+   my ($log, $name, $pid, $mesg) = $_log_attr->( @_ );
 
-   $self->log->error( $_log_leader->( 'error', $self->name, $self->pid).$mesg );
+   $log->error( $_log_leader->( 'error', $name, $pid).$mesg );
    return TRUE;
 }
 
-sub log_info ($$) {
-   my ($self, $mesg) = @_;
+sub log_info ($$;$$) {
+   my ($log, $name, $pid, $mesg) = $_log_attr->( @_ );
 
-   $self->log->info( $_log_leader->( 'info', $self->name, $self->pid).$mesg );
+   $log->info( $_log_leader->( 'info', $name, $pid).$mesg );
    return TRUE;
 }
 

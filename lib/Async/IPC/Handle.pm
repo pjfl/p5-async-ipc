@@ -105,7 +105,9 @@ sub close {
    defined $read_handle  and close $read_handle;
    defined $write_handle and close $write_handle;
 
-   return $self->maybe_invoke_event( 'on_closed' );
+   my $rv = $self->maybe_invoke_event( 'on_closed' );
+
+   return (defined $rv) ? $rv : TRUE;
 }
 
 sub set_handle {

@@ -8,8 +8,7 @@ use File::DataClass::IO qw( io );
 use_ok 'Async::IPC';
 
 my $prog     =  Class::Usul::Programs->new
-   (  config => { appclass => 'Class::Usul', tempdir => 't' },
-      debug  => 1, noask => 1, );
+   (  config => { appclass => 'Class::Usul', tempdir => 't' }, noask => 1, );
 my $factory  =  Async::IPC->new( builder => $prog );
 my $loop     =  $factory->loop;
 my $log      =  $prog->log;
@@ -73,8 +72,7 @@ $wtr->syswrite( 'xxx' ); wait_for { $called }; $called = 0;
 is $count, 1, 'Stat changed open file handle 1';
 $wtr->syswrite( 'xxx' ); wait_for { $called };
 is $count, 2, 'Stat changed open file handle 2';
+$prog->debug or $prog->config->logfile->unlink;
 undef $file;
 
 done_testing;
-
-$prog->config->logfile->unlink;

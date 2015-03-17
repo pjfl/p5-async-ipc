@@ -212,7 +212,7 @@ sub sync_call_handler {
    my $return_chs = $self->return_chs->[ 0 ] ? $self->return_chs : FALSE;
 
    return sub {
-      my $self = shift; my $count = 0; my $log = $self->log;
+      my $self = shift; my $count = 0;
 
       $return_chs and $_start_channels->( $return_chs, 'write' );
       $_start_channels->( $call_chs, 'read' );

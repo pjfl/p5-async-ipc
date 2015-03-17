@@ -5,11 +5,11 @@ use Class::Usul::Programs;
 
 use_ok 'Async::IPC';
 
-my $prog       =  Class::Usul::Programs->new
-   (  config   => { appclass => 'Class::Usul', tempdir => 't' }, noask => 1, );
-my $factory    =  Async::IPC->new( builder => $prog );
-my $loop       =  $factory->loop;
-my $log        =  $prog->log;
+my $prog     =  Class::Usul::Programs->new
+   (  config => { appclass => 'Class::Usul', tempdir => 't' }, noask => 1, );
+my $factory  =  Async::IPC->new( builder => $prog );
+my $loop     =  $factory->loop;
+my $log      =  $prog->log;
 
 my $max_calls  =  3;
 my $results    =  {};
@@ -32,10 +32,9 @@ for (sort { $a <=> $b } keys %{ $results }) {
 $count = () = keys %{ $results };
 
 is $count, $max_calls, 'All results present';
+$prog->debug or $prog->config->logfile->unlink;
 
 done_testing;
-
-$prog->config->logfile->unlink;
 
 # Local Variables:
 # mode: perl
