@@ -12,7 +12,7 @@ use Scalar::Util           qw( blessed );
 my $Cache = {};
 
 # Private methods
-my $_events = sub {
+my $_events = sub { # Do not share state between forks
    return $Cache->{ $PID }->{ $_[ 1 ] } ||= {};
 };
 

@@ -34,6 +34,12 @@ sub new_notifier {
    return $class->new( $args );
 }
 
+sub new_future {
+   my $self = shift; ensure_class_loaded 'Async::IPC::Future';
+
+   return Async::IPC::Future->new( $self );
+}
+
 1;
 
 __END__
@@ -129,6 +135,10 @@ An instance of L<Async::IPC::Semaphore>
 An instance of L<Async::IPC::Stream>
 
 =back
+
+=head2 C<new_future>
+
+Returns an instance of L<Async::IPC::Future>
 
 =head1 Diagnostics
 

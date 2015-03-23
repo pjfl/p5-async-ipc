@@ -21,12 +21,16 @@ around 'BUILDARGS' => sub {
    return $attr;
 };
 
+sub DEMOLISH {
+   my $self = shift; eval { $self->lock->reset( k => refaddr $self ) }; return;
+}
+
 sub raise {
    my $self = shift; $self->is_running or return; my $key = refaddr $self;
 
-   $self->lock->set( k => $key, async => TRUE ) or return TRUE;
+   $self->lock->set( k => $key, async => TRUE ) and return $self->call( $key );
 
-   return $self->call( $key );
+   return TRUE;
 }
 
 1;
@@ -69,6 +73,10 @@ Defines no attributes
 
 Wraps the code reference. When called it will reset the lock set by the
 L</raise> call
+
+=head2 C<DEMOLISH>
+
+Drops the lock in the event of global destruction
 
 =head2 C<raise>
 

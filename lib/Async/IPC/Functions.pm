@@ -3,14 +3,13 @@ package Async::IPC::Functions;
 use strictures;
 use parent 'Exporter::Tiny';
 
-use Class::Usul::Constants qw( FAILED FALSE LANG NUL OK SPC TRUE );
+use Class::Usul::Constants qw( FALSE NUL SPC TRUE );
 use Class::Usul::Functions qw( pad );
 use English                qw( -no_match_vars );
 use Scalar::Util           qw( blessed );
-use Storable               qw( nfreeze );
 
-our @EXPORT_OK = ( qw( log_debug log_error log_info
-                       read_error read_exactly terminate ));
+our @EXPORT_OK = qw( log_debug log_error log_info
+                     read_error read_exactly terminate );
 
 # Private functions
 my $_padid = sub {
@@ -24,8 +23,9 @@ my $_padkey = sub {
 };
 
 my $_log_attr = sub {
-   return blessed $_[ 0 ] ? ($_[ 0 ]->log, $_[ 0 ]->name, $_[ 0 ]->pid, $_[ 1 ])
-                          : @_;
+   return (blessed $_[ 0 ] && $_[ 0 ]->can( 'log' ))
+        ? ($_[ 0 ]->log, $_[ 0 ]->name, $_[ 0 ]->pid, $_[ 1 ])
+        : @_;
 };
 
 my $_log_leader = sub {
@@ -60,7 +60,7 @@ sub read_error ($$) {
    my ($self, $red) = @_;
 
    not defined $red and log_error( $self, $OS_ERROR ) and return TRUE;
-   not length $red  and log_debug( $self, 'EOF' )     and return TRUE;
+   not length  $red and log_debug( $self, 'EOF'     ) and return TRUE;
 
    return FALSE;
 }

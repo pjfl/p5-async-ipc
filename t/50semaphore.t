@@ -41,13 +41,13 @@ $loop->start; $timer->stop; $semaphore->stop;
 $loop->unwatch_signal( INT => $id );
 
 for (sort { $a <=> $b } keys %{ $results }) {
-   is $results->{ $_ }, $_, "raise ${_}";
+   is $results->{ $_ }, $_, "Count ${_}";
 }
 
 $count = () = keys %{ $results };
 
 is $count, $max_calls, 'All results present';
-ok $raised > $count, 'Raises more than count';
+ok $raised > $count, "Raises more than count ${raised}";
 ok $prog->config->logfile->exists, 'Creates logfile';
 $prog->debug or $prog->config->logfile->unlink;
 

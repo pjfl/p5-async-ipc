@@ -93,14 +93,23 @@ my $_recv_async = sub {
 
    my $on_recv = $args{on_recv}; my $on_eof = $args{on_eof};
 
+   my $f; not defined wantarray or $f = $self->factory->new_future;
+
    push @{ $self->result_queue }, sub {
       my ($self, $type, $record) = @_;
 
-      if    ($type eq 'recv') { $on_recv and $on_recv->( $self, $record ) }
-      elsif ($type eq 'eof' ) { $on_eof  and $on_eof->( $self ) }
+      if ($type eq 'recv') {
+         $f and not $f->is_cancelled and $f->done( $record );
+         $on_recv and $on_recv->( $self, $record );
+      }
+      elsif ($type eq 'eof') {
+         $f and not $f->is_cancelled
+            and $f->fail( 'EOF waiting for Channel recv', 'eof' );
+         $on_eof and $on_eof->( $self );
+      }
    };
 
-   return TRUE;
+   return $f;
 };
 
 my $_recv_sync = sub {

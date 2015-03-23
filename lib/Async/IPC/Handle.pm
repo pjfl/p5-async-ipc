@@ -5,7 +5,7 @@ use namespace::autoclean;
 use Moo;
 use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE TRUE );
 use Class::Usul::Functions qw( throw );
-use Class::Usul::Types     qw( Bool CodeRef FileHandle Maybe Object );
+use Class::Usul::Types     qw( ArrayRef Bool CodeRef FileHandle Maybe Object );
 use IO::Handle;
 use Unexpected::Functions  qw( Unspecified );
 
@@ -40,6 +40,9 @@ my $_toggle_write_watcher = sub {
 
    return;
 };
+
+has 'close_futures'   => is => 'ro',   isa => ArrayRef[Object],
+   builder            => sub { [] };
 
 has 'is_closing'      => is => 'rwp',  isa => Bool, default => FALSE;
 
@@ -107,7 +110,25 @@ sub close {
 
    my $rv = $self->maybe_invoke_event( 'on_closed' );
 
+   if ($self->close_futures) {
+      $_->done for (@{ $self->close_futures });
+   }
+
    return (defined $rv) ? $rv : TRUE;
+}
+
+sub new_close_future {
+   my $self = shift;
+
+   push @{ $self->close_futures }, my $future = $self->factory->new_future;
+
+   $future->on_cancel( $self->capture_weakself( sub {
+      my ($self, $f) = @_; $self or return;
+
+      @{ $self->close_futures } = grep { $_ != $f } @{ $self->close_futures };
+   } ) );
+
+   return $future;
 }
 
 sub set_handle {
@@ -176,6 +197,23 @@ Defines the following attributes;
 
 =over 3
 
+=item C<close_futures>
+
+=item C<is_closing>
+
+=item C<is_running>
+
+=item C<on_closed>
+
+=item C<on_read_ready>
+
+=item C<on_write_ready>
+
+=item C<read_handle>
+
+=item C<write_handle>
+
+
 =back
 
 =head1 Subroutines/Methods
@@ -189,17 +227,7 @@ Defines the following attributes;
 
 =head2 C<close>
 
-=head2 C<is_closing>
-
-=head2 C<is_running>
-
-=head2 C<on_closed>
-
-=head2 C<on_read_ready>
-
-=head2 C<on_write_ready>
-
-=head2 C<read_handle>
+=head2 C<new_close_future>
 
 =head2 C<set_handle>
 
@@ -208,9 +236,6 @@ Defines the following attributes;
 =head2 C<start>
 
 =head2 C<stop>
-
-=head2 C<write_handle>
-
 
 =head1 Diagnostics
 

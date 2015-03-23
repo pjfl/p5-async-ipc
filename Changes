@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - Add use of Future
           - The log_* functions have an alternate signature
           - Made log_leader private.  Added log_*
           - Added FileStream

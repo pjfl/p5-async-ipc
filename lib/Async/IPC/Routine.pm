@@ -7,11 +7,14 @@ use Async::IPC::Functions  qw( log_error terminate );
 use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE TRUE );
 use Class::Usul::Functions qw( bson64id is_arrayref throw );
 use Class::Usul::Types     qw( ArrayRef Bool CodeRef
-                               HashRef Object PositiveInt );
+                               HashRef Maybe Object PositiveInt );
 use Try::Tiny;
+use Type::Utils            qw( enum );
 use Unexpected::Functions  qw( Unspecified );
 
 extends q(Async::IPC::Base);
+
+my $MODE_TYPE = enum 'MODE_TYPE' => [ 'async', 'sync' ];
 
 # Private functions
 my $_start_channels = sub {
@@ -55,11 +58,14 @@ my $_build_async_recv_handler = sub {
    };
 };
 
+my $_build_call_ch_mode = sub {
+   return (defined $_[ 0 ]->on_recv->[ 1 ]) ? 'async' : 'sync';
+};
+
 my $_build_call_chs = sub {
    my $self = shift; my %args = (); my $channels = []; my $ch_no = 0;
 
-   $args{read_mode } = (defined $self->on_recv->[ 1 ]) ? 'async' : 'sync';
-   $args{write_mode} = 'async';
+   $args{read_mode} = $self->call_ch_mode; $args{write_mode} = 'async';
 
    while (defined (my $code = $self->on_recv->[ $ch_no ])) {
       if ($args{read_mode} eq 'async') {
@@ -77,7 +83,7 @@ my $_build_call_chs = sub {
 my $_build_child = sub {
    my $self = shift; return $self->factory->new_notifier
       ( { type        => 'process',
-          code        => (defined $self->on_recv->[ 1 ])
+          code        => $self->call_ch_mode eq 'async'
                        ? $self->async_call_handler : $self->sync_call_handler,
           description => $self->description,
           name        => $self->name,
@@ -97,25 +103,32 @@ my $_build_return_chs = sub {
    return $channels;
 };
 
-has 'call_chs'   => is => 'lazy', isa => ArrayRef[Object],
-   builder       => $_build_call_chs;
+has 'after'        => is => 'ro',   isa => Maybe[CodeRef];
 
-has 'child'      => is => 'lazy', isa => Object,  builder => $_build_child;
+has 'before'       => is => 'ro',   isa => Maybe[CodeRef];
 
-has 'child_args' => is => 'ro',   isa => HashRef, builder => sub { {} };
+has 'call_ch_mode' => is => 'lazy', isa => $MODE_TYPE,
+   builder         => $_build_call_ch_mode;
 
-has 'is_running' => is => 'rwp',  isa => Bool,    default => FALSE;
+has 'call_chs'     => is => 'lazy', isa => ArrayRef[Object],
+   builder         => $_build_call_chs;
 
-has 'max_calls'  => is => 'ro',   isa => PositiveInt, default => 0;
+has 'child'        => is => 'lazy', isa => Object,  builder => $_build_child;
 
-has 'on_recv'    => is => 'ro',   isa => ArrayRef[CodeRef],
-   builder       => sub { [] };
+has 'child_args'   => is => 'ro',   isa => HashRef, builder => sub { {} };
 
-has 'on_return'  => is => 'ro',   isa => ArrayRef[CodeRef],
-   builder       => sub { [] };
+has 'is_running'   => is => 'rwp',  isa => Bool,    default => FALSE;
 
-has 'return_chs' => is => 'lazy', isa => ArrayRef[Object],
-   builder       => $_build_return_chs;
+has 'max_calls'    => is => 'ro',   isa => PositiveInt, default => 0;
+
+has 'on_recv'      => is => 'ro',   isa => ArrayRef[CodeRef],
+   builder         => sub { [] };
+
+has 'on_return'    => is => 'ro',   isa => ArrayRef[CodeRef],
+   builder         => sub { [] };
+
+has 'return_chs'   => is => 'lazy', isa => ArrayRef[Object],
+   builder         => $_build_return_chs;
 
 # Construction
 around 'BUILDARGS' => sub {
@@ -157,12 +170,14 @@ sub async_call_handler {
    my $return_chs = $self->return_chs->[ 0 ] ? $self->return_chs : FALSE;
 
    return sub {
-      my $self = shift; $self->_set_loop( my $loop = Async::IPC::Loop->new );
+      my $self = shift; my $loop = $self->loop;
 
-      $return_chs and $_start_channels->( $return_chs, 'write' );
-      $_start_channels->( $call_chs, 'read' );
       $loop->watch_signal( TERM => sub { terminate $loop } );
-      $loop->start;
+      $self->before and $self->before->( $self );
+      $return_chs   and $_start_channels->( $return_chs, 'write' );
+      $_start_channels->( $call_chs, 'read' );
+      $loop->start; # Loops here processing events until terminate is called
+      $self->after  and $self->after->( $self );
       return;
    };
 };
@@ -221,7 +236,7 @@ sub sync_call_handler {
          my $param;
 
          try {
-            if (defined ($param = $call_chs->[ 0 ]->recv)) {
+            if (defined ($param = $call_chs->[ 0 ]->recv)) { # Blocks here
                my $rv = $code->( $self, @{ $param } );
 
                if ($return_chs) {
@@ -277,6 +292,16 @@ Call a method is a child process returning the result
 Defines the following attributes;
 
 =over 3
+
+=item C<after>
+
+A code reference. Called after the event loop in the asyncronous call handler
+stops
+
+=item C<before>
+
+A code reference. Called before the event loop in the asyncronous call handler
+is started
 
 =item C<call_chs>
 

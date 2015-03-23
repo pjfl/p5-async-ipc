@@ -6,7 +6,7 @@ use Moo;
 use Async::IPC::Functions  qw( log_debug log_error );
 use Encode 2.11            qw( find_encoding STOP_AT_PARTIAL );
 use Errno                  qw( EAGAIN EWOULDBLOCK EINTR EPIPE );
-use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE NUL TRUE );
+use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE NUL TRUE UNDEFINED_RV );
 use Class::Usul::Functions qw( is_coderef throw );
 use Class::Usul::Types     qw( ArrayRef Bool CodeRef EncodingType Maybe
                                NonEmptySimpleStr NonZeroPositiveInt Object
@@ -75,6 +75,10 @@ my $_handle_read_error = sub {
 
    $self->maybe_invoke_event( 'on_read_error', $errno ) or $self->close_now;
 
+   for (grep { $_->future } @{ $self->{readqueue} }) {
+      $_->future->fail( "Read failed: ${errno}", 'sysread', $errno );
+   }
+
    splice @{ $self->readqueue };
    return;
 };
@@ -121,7 +125,7 @@ my $_toggle_write_watcher = sub {
 };
 
 my $_flush_one_read = sub {
-   my ($self, $eof) = @_; $self->_set_flushing_read( TRUE );
+   my ($self, $eof) = @_; $self->_set_flushing_read( TRUE ); $eof //= FALSE;
 
    my $readqueue = $self->readqueue; my $ret;
 
@@ -132,6 +136,8 @@ my $_flush_one_read = sub {
 
    my $len = length ${ $self->readbuff };
 
+   log_debug $self, "Flush one read: EOF ${eof} RET ${ret} LEN ${len}";
+
    if ($self->read_low_watermark and $self->at_read_high_watermark
        and $len < $self->read_low_watermark) {
       $self->_set_at_read_high_watermark( FALSE );
@@ -141,10 +147,10 @@ my $_flush_one_read = sub {
    if (is_coderef $ret) { # Replace the top CODE, or add it if there was none
       $readqueue->[ 0 ] = Async::IPC::Reader->new( $ret, undef ); $ret = TRUE;
    }
-   elsif (@{ $readqueue } and not defined $ret) {
+   elsif (@{ $readqueue } and $ret == UNDEFINED_RV) {
       shift @{ $readqueue }; $ret = TRUE;
    }
-   else { $ret = $ret && (($len > 0) || $eof) }
+   else { $ret = ($ret && $ret != UNDEFINED_RV) && (($len > 0) || $eof) }
 
    $self->_set_flushing_read( FALSE );
    return $ret;
@@ -168,6 +174,22 @@ my $_flush_one_write = sub {
 
          unshift @{ $writequeue }, Async::IPC::Writer->new
             ( $data, $head->writelen, $head->on_write, undef, undef, 0 );
+      }
+      elsif (blessed $head->data and $head->data->isa( 'Future' )) {
+         my $f = $head->data;
+
+         unless ($f->is_ready) {
+            $head->watching and return FALSE;
+            $f->on_ready( sub { $self->_flush_one_write } );
+            $head->watching( TRUE );
+            return FALSE;
+         }
+
+         my $data = $f->get;
+         my $encoder; not ref $data and $encoder = $self->encoder
+            and $data = $encoder->encode( $data );
+
+         $head->data = $data;
       }
       else { throw 'Reference [_1] unknown to write queue', [ $head->data ] }
    }
@@ -219,6 +241,11 @@ my $_do_read = sub {
       if ($eof) {
          $self->maybe_invoke_event( 'on_read_eof' );
          $self->close_on_read_eof and $self->close_now;
+
+         for (grep { $_->future } @{ $self->{readqueue} }) {
+            $_->future->done( undef );
+         }
+
          splice @{ $self->readqueue };
          return;
       }
@@ -280,6 +307,30 @@ my $_on_write_ready = sub {
       $self->want_writeready_for_write and $self->$_do_write;
       return;
    };
+};
+
+my $_push_on_read = sub {
+   my ($self, $on_read, %args) = @_; # %args undocumented for internal use
+
+   push @{ $self->readqueue },
+      Async::IPC::Reader->new( $on_read, $args{future} );
+
+   # TODO: Should this always defer?
+   $self->flushing_read and return;
+
+   1 while (length ${ $self->readbuff } and $self->$_flush_one_read);
+
+   return;
+};
+
+my $_read_future = sub {
+   my $self = shift; my $f = $self->factory->new_future;
+
+   $f->on_cancel( $self->capture_weakself( sub {
+      my $self = shift or return; 1 while $self->$_flush_one_read;
+   } ) );
+
+   return $f;
 };
 
 # Public attributes
@@ -418,6 +469,68 @@ sub close_when_empty {
    return FALSE;
 }
 
+sub read_atmost {
+   my ($self, $len) = @_; my $f = $self->$_read_future;
+
+   $self->$_push_on_read( sub {
+      my (undef, $buffref, $eof) = @_; $f->is_cancelled and return;
+
+      $f->done( substr( ${ $buffref }, 0, $len, NUL ), $eof );
+      return;
+   }, future => $f );
+
+   return $f;
+}
+
+sub read_exactly {
+   my ($self, $len) = @_; my $f = $self->$_read_future;
+
+   $self->$_push_on_read( sub {
+      my (undef, $buffref, $eof) = @_; $f->is_cancelled and return;
+
+      $eof or length ${ $buffref } >= $len or return FALSE;
+      $f->done( substr( ${ $buffref }, 0, $len, NUL ), $eof );
+      return;
+   }, future => $f );
+
+   return $f;
+}
+
+sub read_until {
+   my ($self, $until) = @_; my $f = $self->$_read_future;
+
+   ref $until or $until = qr{ \Q$until\E }mx;
+
+   $self->$_push_on_read( sub {
+      my (undef, $buffref, $eof) = @_; $f->is_cancelled and return;
+
+      if (${ $buffref } =~ $until) {
+         $f->done( substr( ${ $buffref }, 0, $+[ 0 ], NUL ), $eof ); return;
+      }
+      elsif ($eof) {
+         $f->done( ${ $buffref }, $eof ); ${ $buffref } = NUL; return;
+      }
+
+      return FALSE;
+   }, future => $f );
+
+   return $f;
+}
+
+sub read_until_eof {
+   my $self = shift; my $f = $self->$_read_future;
+
+   $self->$_push_on_read( sub {
+      my (undef, $buffref, $eof) = @_; $f->is_cancelled and return;
+
+      $eof or return FALSE;
+      $f->done( ${ $buffref }, $eof ); ${ $buffref } = NUL;
+      return;
+   }, future => $f );
+
+   return $f;
+}
+
 sub write {
    my ($self, $data, %params) = @_;
 
@@ -438,6 +551,25 @@ sub write {
    keys %params
       and throw 'Write method unrecognised keys - '.(join ', ', keys %params);
 
+   my $f; if (defined wantarray) {
+      my $orig_on_flush = $on_flush; my $orig_on_error = $on_error;
+
+      $f = $self->factory->new_future;
+
+      $on_flush = sub {
+         $f->done; $orig_on_flush and $orig_on_flush->( @_ );
+      };
+
+      $on_error = sub {
+         my ($self, $errno, @args) = @_;
+
+         $f->is_ready
+            or $f->fail( "Write failed: ${errno}", 'syswrite', $errno );
+
+         $orig_on_error and $orig_on_error->( $self, $errno, @args );
+      };
+   }
+
    push @{ $self->writequeue }, Async::IPC::Writer->new
       ( $data, $len, $on_write, $on_flush, $on_error, FALSE );
 
@@ -445,12 +577,12 @@ sub write {
       1 while (not $self->$_is_empty and $self->$_flush_one_write);
 
       if ($self->$_is_empty) {
-         $self->want_writeready_for_write( FALSE ); return TRUE;
+         $self->want_writeready_for_write( FALSE ); return $f;
       }
    }
 
    $self->want_writeready_for_write( TRUE );
-   return TRUE;
+   return $f;
 }
 
 package Async::IPC::Writer;
@@ -617,6 +749,14 @@ Defines the following attributes;
 =head2 C<close_now>
 
 =head2 C<close_when_empty>
+
+=head2 C<read_atmost>
+
+=head2 C<read_exactly>
+
+=head2 C<read_until>
+
+=head2 C<read_until_eof>
 
 =head2 C<write>
 

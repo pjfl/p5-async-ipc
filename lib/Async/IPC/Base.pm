@@ -7,28 +7,30 @@ use Async::IPC;
 use Async::IPC::Functions  qw( log_debug );
 use Class::Usul::Constants qw( FALSE TRUE UNDEFINED_RV );
 use Class::Usul::Functions qw( is_coderef throw );
-use Class::Usul::Types     qw( BaseType Bool NonEmptySimpleStr
-                               Object PositiveInt );
+use Class::Usul::Types     qw( BaseType Bool CodeRef HashRef Maybe
+                               NonEmptySimpleStr Object PositiveInt );
 use Scalar::Util           qw( blessed weaken );
 
 # Public attributes
-has 'autostart'   => is => 'ro',   isa => Bool,               default => TRUE;
+has 'autostart'   => is => 'ro',   isa => Bool, default => TRUE;
+
+has 'builder'     => is => 'ro',   isa => BaseType,
+   handles        => [ qw( config debug lock log run_cmd ) ], required => TRUE;
 
 has 'description' => is => 'ro',   isa => NonEmptySimpleStr, required => TRUE;
 
-has 'factory'     => is => 'lazy', isa => Object,             builder => sub {
-   Async::IPC->new( builder => $_[ 0 ]->_usul, loop => $_[ 0 ]->loop, ) };
+has 'factory'     => is => 'lazy', isa => Object, builder => sub {
+   Async::IPC->new( builder => $_[ 0 ]->builder, loop => $_[ 0 ]->loop, ) };
 
-has 'loop'        => is => 'rwp',  isa => Object,            required => TRUE;
+has 'futures'     => is => 'ro',   isa => HashRef, builder => sub { {} };
+
+has 'loop'        => is => 'ro',   isa => Object, required => TRUE;
 
 has 'name'        => is => 'ro',   isa => NonEmptySimpleStr, required => TRUE;
 
-has 'pid'         => is => 'rwp',  isa => PositiveInt,        default => 0;
+has 'on_error'    => is => 'ro',   isa => Maybe[CodeRef];
 
-# Private attributes
-has '_usul'       => is => 'ro',  isa => BaseType,
-   handles        => [ qw( config debug lock log run_cmd ) ],
-   init_arg       => 'builder', required => TRUE;
+has 'pid'         => is => 'rwp',  isa => PositiveInt, default => 0;
 
 # Construction
 around 'BUILDARGS' => sub {
@@ -55,6 +57,20 @@ my $_invoke_event = sub {
 };
 
 # Public methods
+sub adopt_future {
+   my ($self, $f) = @_; my $fkey = "$f"; # Stable stringification
+
+   $self->futures->{ $fkey } = $f;
+
+   $f->on_ready( $self->capture_weakself( sub {
+      my ($self, $f) = @_; delete $self->futures->{ $fkey };
+
+      $f->failure and $self->invoke_error( $f->failure );
+   } ) );
+
+   return $f;
+}
+
 sub capture_weakself {
    my ($self, $code) = @_; weaken $self;
 
@@ -66,6 +82,14 @@ sub capture_weakself {
 
       unshift @_, $self; goto &$cb;
    };
+}
+
+sub invoke_error {
+   my ($self, $message, $name, @details) = @_;
+
+   $self->on_error or throw $message;
+
+   return $self->on_error->( $self, $message, $name, @details );
 }
 
 sub invoke_event {
@@ -131,10 +155,17 @@ Defines the following attributes;
 Read only boolean defaults to true. If false child process creation is delayed
 until first use
 
+=item C<builder>
+
+A required instance of L<Class::Usul>. Provides object references for;
+configuration, logging, locking, and localisation
+
 =item C<description>
 
 A required, immutable, non empty simple string. The description used by the
 logger
+
+=item C<futures>
 
 =item C<loop>
 
@@ -144,6 +175,8 @@ An instance of L<Async::IPC::Loop>
 
 A required, immutable, non empty simple string. Logger key used to identify a
 log entry
+
+=item C<on_error>
 
 =item C<pid>
 
@@ -158,6 +191,8 @@ A non zero positive integer. The process id of this notifier
 Allows C<desc> to be used as an alias for the C<description> attribute during
 construction
 
+=head2 C<adopt_future>
+
 =head2 C<can_event>
 
    $code_ref = $self->can_event( $event_name );
@@ -171,6 +206,8 @@ event, otherwise returns false
 
 Returns a code reference which when called passes a weakened copy of C<$self>
 to the supplied code reference
+
+=head2 C<invoke_error>
 
 =head2 C<invoke_event>
 
