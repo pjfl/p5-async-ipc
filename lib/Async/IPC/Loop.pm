@@ -17,7 +17,7 @@ my $_events = sub { # Do not share state between forks
 };
 
 my $_sigattaches = sub {
-   return $Cache->{ $PID }->{_sigattaches} ||= {};
+   return $Cache->{ $PID }->{ 'sigattaches' } ||= {};
 };
 
 # Construction
@@ -35,20 +35,26 @@ sub once {
 }
 
 sub start {
-   my $self = shift; return (local $self->{cv} = AnyEvent->condvar)->recv;
+   my $self = shift; my $cv = $self->$_events( 'condvars' );
+
+   return (local $cv->{state} = AnyEvent->condvar)->recv;
 }
 
 sub start_nb {
-   my ($self, $cb) = @_;
+   my ($self, $cb) = @_; my $cv = $self->$_events( 'condvars' );
 
-   (local $self->{cv} = AnyEvent->condvar)->cb( sub {
+   (local $cv->{state} = AnyEvent->condvar)->cb( sub {
       my @res = $_[ 0 ]->recv; defined $cb and $cb->( @res ) } );
 
    return;
 }
 
 sub stop {
-   shift->{cv}->send( @_ ); return;
+   my ($self, @args) = @_; my $cv = $self->$_events( 'condvars' );
+
+   exists $cv->{state} and defined $cv->{state} and $cv->{state}->send( @args );
+
+   return;
 }
 
 sub watch_child {

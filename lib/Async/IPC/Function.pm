@@ -36,7 +36,7 @@ my $_new_worker = sub {
    my $args    = { %{ $self->worker_args } };
    my $on_exit = delete $args->{on_exit} // sub {};
 
-   $args->{name       } //= $self->name.'_worker';
+   $args->{name       } //= $self->name."_wkr${index}";
    $args->{description} //= $self->description." worker ${index}";
    $args->{on_exit} = sub { delete $workers->{ $_[ 1 ] }; $on_exit->( @_ ) };
 
@@ -78,10 +78,7 @@ around 'BUILDARGS' => sub {
 };
 
 sub BUILD {
-   my $self = shift; $self->_set_pid( $PID );
-
-   $self->autostart and $self->start;
-   return;
+   my $self = shift; $self->autostart and $self->start; return;
 }
 
 sub DEMOLISH {

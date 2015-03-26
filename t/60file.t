@@ -62,7 +62,7 @@ my ($rdr, $wtr) = @{ nonblocking_write_pipe_pair() };
 $file = $factory->new_notifier
    (  desc   => 'the file test notifier',
       handle => $rdr,
-      name   => 'file',
+      name   => 'file2',
       on_stat_changed => sub { $called++; $count++ },
       type   => 'file' );
 

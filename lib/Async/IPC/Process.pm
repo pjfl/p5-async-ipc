@@ -37,6 +37,8 @@ has 'code'       => is => 'ro', isa => CodeRef | ArrayRef | NonEmptySimpleStr,
 
 has 'on_exit'    => is => 'ro', isa => CodeRef | Undef;
 
+has '+pid'       => builder => sub { 0 };
+
 # Construction
 sub BUILD {
    my $self = shift; $self->autostart and $self->start; return;

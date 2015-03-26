@@ -56,6 +56,7 @@ my $writeready = 0; my @wrargs;
 
 delete $args->{read_handle}; delete $args->{on_read_ready};
 
+$args->{name          } = 'log_key2';
 $args->{write_handle  } = $wtr;
 $args->{on_write_ready} = sub { @wrargs = @_; $writeready = 1 };
 

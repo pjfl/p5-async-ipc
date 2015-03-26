@@ -6,7 +6,7 @@ use Moo;
 use Async::IPC::Functions  qw( log_debug log_error );
 use Encode 2.11            qw( find_encoding STOP_AT_PARTIAL );
 use Errno                  qw( EAGAIN EWOULDBLOCK EINTR EPIPE );
-use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE NUL TRUE UNDEFINED_RV );
+use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE NUL TRUE );
 use Class::Usul::Functions qw( is_coderef throw );
 use Class::Usul::Types     qw( ArrayRef Bool CodeRef EncodingType Maybe
                                NonEmptySimpleStr NonZeroPositiveInt Object
@@ -147,10 +147,10 @@ my $_flush_one_read = sub {
    if (is_coderef $ret) { # Replace the top CODE, or add it if there was none
       $readqueue->[ 0 ] = Async::IPC::Reader->new( $ret, undef ); $ret = TRUE;
    }
-   elsif (@{ $readqueue } and $ret == UNDEFINED_RV) {
+   elsif (@{ $readqueue } and not defined $ret) {
       shift @{ $readqueue }; $ret = TRUE;
    }
-   else { $ret = ($ret && $ret != UNDEFINED_RV) && (($len > 0) || $eof) }
+   else { $ret = $ret && (($len > 0) || $eof) }
 
    $self->_set_flushing_read( FALSE );
    return $ret;
@@ -173,7 +173,7 @@ my $_flush_one_write = sub {
             and $data = $encoder->encode( $data );
 
          unshift @{ $writequeue }, Async::IPC::Writer->new
-            ( $data, $head->writelen, $head->on_write, undef, undef, 0 );
+            ( $data, $head->writelen, $head->on_write, undef, undef, FALSE );
       }
       elsif (blessed $head->data and $head->data->isa( 'Future' )) {
          my $f = $head->data;
@@ -430,7 +430,7 @@ has 'writer'                    => is => 'ro',   isa => CodeRef,
 
 # Construction
 sub BUILD {
-   my $self = shift; $self->_set_pid( $PID );
+   my $self = shift;
 
    $self->read_handle and not $self->on_read
       and throw Unspecified, [ 'on_read' ];

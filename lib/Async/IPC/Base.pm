@@ -5,11 +5,14 @@ use namespace::autoclean;
 use Moo;
 use Async::IPC;
 use Async::IPC::Functions  qw( log_debug );
-use Class::Usul::Constants qw( FALSE TRUE UNDEFINED_RV );
+use Class::Usul::Constants qw( FALSE TRUE );
 use Class::Usul::Functions qw( is_coderef throw );
 use Class::Usul::Types     qw( BaseType Bool CodeRef HashRef Maybe
                                NonEmptySimpleStr Object PositiveInt );
+use English                qw( -no_match_vars );
 use Scalar::Util           qw( blessed weaken );
+
+my $Notifiers = {};
 
 # Public attributes
 has 'autostart'   => is => 'ro',   isa => Bool, default => TRUE;
@@ -30,7 +33,12 @@ has 'name'        => is => 'ro',   isa => NonEmptySimpleStr, required => TRUE;
 
 has 'on_error'    => is => 'ro',   isa => Maybe[CodeRef];
 
-has 'pid'         => is => 'rwp',  isa => PositiveInt, default => 0;
+has 'pid'         => is => 'rwp',  isa => PositiveInt, builder => sub { $PID },
+   lazy           => TRUE;
+
+has 'type'        => is => 'lazy', isa => NonEmptySimpleStr, builder => sub {
+   my $class = blessed $_[ 0 ]; return lc ((split m{ :: }mx, $class)[ -1 ]);
+};
 
 # Construction
 around 'BUILDARGS' => sub {
@@ -40,6 +48,16 @@ around 'BUILDARGS' => sub {
 
    return $attr;
 };
+
+sub BUILD {
+   my $self = shift; my $id = $self->type.'::'.$self->name;
+
+   exists $Notifiers->{ $id } and $Notifiers->{ $id }
+      and throw 'Notifier id [_1] not unique', [ $id ];
+
+   $Notifiers->{ $id } = TRUE;
+   return;
+}
 
 # Private methods
 my $_can_event = sub {
@@ -53,7 +71,7 @@ my $_invoke_event = sub {
 
    log_debug $self, "Invoke event ${ev_name}";
 
-   return $code->( $self, @args ) // UNDEFINED_RV;
+   return $code->( $self, @args );
 };
 
 # Public methods
@@ -182,6 +200,8 @@ log entry
 
 A non zero positive integer. The process id of this notifier
 
+=item C<type>
+
 =back
 
 =head1 Subroutines/Methods
@@ -190,6 +210,8 @@ A non zero positive integer. The process id of this notifier
 
 Allows C<desc> to be used as an alias for the C<description> attribute during
 construction
+
+=head2 C<BUILD>
 
 =head2 C<adopt_future>
 

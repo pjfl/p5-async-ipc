@@ -20,7 +20,7 @@ has 'interval'   => is => 'ro',  isa => NonZeroPositiveNum, default => 1;
 
 has 'is_running' => is => 'rwp', isa => Bool, default => FALSE;
 
-has '+pid'       => default => $PID;
+has '+pid'       => builder => sub { $_[ 0 ]->loop->uuid };
 
 has 'time_spec'  => is => 'ro',  isa => SimpleStr | Undef;
 

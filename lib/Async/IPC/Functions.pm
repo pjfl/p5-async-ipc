@@ -17,7 +17,7 @@ my $_padid = sub {
 };
 
 my $_padkey = sub {
-   my ($level, $key) = @_; my $w = 14 - length $level; $w < 1 and $w = 1;
+   my ($level, $key) = @_; my $w = 15 - length $level; $w < 1 and $w = 1;
 
    return pad uc( $key ), $w, SPC, 'left';
 };

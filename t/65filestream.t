@@ -76,7 +76,7 @@ sub wait_for (&) {
          description => 'the test file stream notifier',
          handle      => $rdr,
          interval    => 0.1,
-         name        => 'filestream',
+         name        => 'filestream2',
          on_initial  => sub { ( undef, $initial_size ) = @_ },
          on_read     => sub {
             my ($self, $buffref, $eof) = @_;
@@ -106,7 +106,7 @@ sub wait_for (&) {
          description => 'the test file stream notifier',
          handle      => $rdr,
          interval    => 0.1,
-         name        => 'filestream',
+         name        => 'filestream3',
          on_initial  => sub {
             my $self = shift;
             # Give it a tiny block size, forcing it to have to seek

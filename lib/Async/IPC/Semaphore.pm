@@ -8,7 +8,6 @@ use Scalar::Util           qw( refaddr );
 
 extends q(Async::IPC::Routine);
 
-# Private functions
 # Construction
 around 'BUILDARGS' => sub {
    my ($orig, $self, @args) = @_; my $attr = $orig->( $self, @args );
@@ -25,6 +24,7 @@ sub DEMOLISH {
    my $self = shift; eval { $self->lock->reset( k => refaddr $self ) }; return;
 }
 
+# Public methods
 sub raise {
    my $self = shift; $self->is_running or return; my $key = refaddr $self;
 

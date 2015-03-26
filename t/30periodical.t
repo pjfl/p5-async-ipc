@@ -23,6 +23,8 @@ my $timer      =  $factory->new_notifier
       name     => 'key',
       type     => 'periodical' );
 
+is $timer->pid, 1, 'Timer pid';
+
 $loop->start; $timer->stop;
 
 for (sort { $a <=> $b } keys %{ $results }) {

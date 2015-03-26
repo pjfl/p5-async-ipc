@@ -22,7 +22,7 @@ has 'builder' => is => 'ro',   isa => BaseType, required => TRUE;
 sub new_notifier {
    my $self  = shift; my $args = arg_list @_;
 
-   my $type  = delete $args->{type} or throw Unspecified, [ 'type' ];
+   my $type  = $args->{type} or throw Unspecified, [ 'type' ];
 
    my $class = first_char $type eq '+' ? (substr $type, 1)
                                        : __PACKAGE__.'::'.(ucfirst $type);

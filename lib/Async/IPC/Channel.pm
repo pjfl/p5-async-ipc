@@ -180,10 +180,7 @@ has 'write_mode'   => is => 'ro',   isa => $MODE_TYPE, default => 'sync';
 
 # Construction
 sub BUILD {
-   my $self = shift; $self->_set_pid( $PID );
-
-   $self->read_handle; $self->write_handle;
-   return;
+   my $self = shift; $self->read_handle; $self->write_handle; return;
 }
 
 sub DEMOLISH {

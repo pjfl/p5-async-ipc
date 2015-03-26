@@ -4,7 +4,7 @@ use namespace::autoclean;
 
 use Moo;
 use Async::IPC::Functions  qw( log_error terminate );
-use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE TRUE );
+use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE OK TRUE );
 use Class::Usul::Functions qw( bson64id is_arrayref throw );
 use Class::Usul::Types     qw( ArrayRef Bool CodeRef
                                HashRef Maybe Object PositiveInt );
@@ -93,7 +93,7 @@ my $_build_child = sub {
 my $_build_return_chs = sub {
    my $self = shift; my %args = (); my $channels = []; my $ch_no = 0;
 
-   $self->on_return->[ 0 ] or return; $args{read_mode} = 'async';
+   $self->on_return->[ 0 ] or return $channels; $args{read_mode} = 'async';
 
    while (defined ($args{on_recv} = $self->on_return->[ $ch_no ])) {
       push @{ $channels }, $self->$_build_channel( 'return', $ch_no, %args );
@@ -166,19 +166,22 @@ sub DEMOLISH {
 # Public methods
 sub async_call_handler {
    my $self       = shift;
+   my $after      = $self->after;
+   my $before     = $self->before;
    my $call_chs   = $self->call_chs;
    my $return_chs = $self->return_chs->[ 0 ] ? $self->return_chs : FALSE;
 
    return sub {
       my $self = shift; my $loop = $self->loop;
 
-      $loop->watch_signal( TERM => sub { terminate $loop } );
-      $self->before and $self->before->( $self );
-      $return_chs   and $_start_channels->( $return_chs, 'write' );
+      $before and $before->( $self ); # Must fork before watching signals
+      $return_chs and $_start_channels->( $return_chs, 'write' );
       $_start_channels->( $call_chs, 'read' );
+      $loop->watch_signal( TERM => sub { terminate $loop } );
       $loop->start; # Loops here processing events until terminate is called
-      $self->after  and $self->after->( $self );
-      return;
+      $after and $after->( $self );
+      $self->loop->watch_child( 0 );
+      return OK;
    };
 };
 

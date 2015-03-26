@@ -124,7 +124,7 @@ sub read_more {
    $self->_set_last_pos( $path->tell );
 
    if ($self->last_pos < $self->last_size) {
-      $self->loop->watch_idle( $self->loop->uuid, sub { $self->read_more } );
+      $self->loop->watch_idle( $self->pid, sub { $self->read_more } );
    }
    elsif ($self->renamed) {
       $self->_set_last_size( 0 ); log_debug $self, 'Reopening for rename';
@@ -132,7 +132,7 @@ sub read_more {
       if ($self->last_pos) {
          $self->maybe_invoke_event( 'on_truncated' );
          $self->_set_last_pos( 0 );
-         $self->loop->watch_idle( $self->loop->uuid, sub { $self->read_more } );
+         $self->loop->watch_idle( $self->pid, sub { $self->read_more } );
       }
 
       $path->close; $path->assert_open; $self->_set_renamed( FALSE );
