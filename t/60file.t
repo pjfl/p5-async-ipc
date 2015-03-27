@@ -32,15 +32,16 @@ my $lost     = 0;
 my $size     = 0;
 my $path     = io [ 't', 'dummy' ];
 my $file     = $factory->new_notifier
-   (  desc   => 'the file test notifier',
-      name   => 'file',
+   (  type     => 'file',
+      desc     => 'the file test notifier',
+      interval => 0.5,
+      name     => 'file',
       on_size_changed => sub { $size = $_[ 2 ] },
       on_stat_changed => sub {
          not $_[ 1 ] and $_[ 2 ] and $found = 1;
          $_[ 1 ] and not $_[ 2 ] and $lost  = 1;
       },
-      path   => $path,
-      type   => 'file' );
+      path     => $path, );
 
 $loop->once;
 is $found, 0, 'File not found';
@@ -60,11 +61,12 @@ my $called = 0; my $count = 0;
 my ($rdr, $wtr) = @{ nonblocking_write_pipe_pair() };
 
 $file = $factory->new_notifier
-   (  desc   => 'the file test notifier',
-      handle => $rdr,
-      name   => 'file2',
-      on_stat_changed => sub { $called++; $count++ },
-      type   => 'file' );
+   (  type     => 'file',
+      desc     => 'the file test notifier',
+      handle   => $rdr,
+      interval => 1,
+      name     => 'file2',
+      on_stat_changed => sub { $called++; $count++ }, );
 
 $loop->once( 1 );
 is $called, 0, 'Stat not changed open file handle';

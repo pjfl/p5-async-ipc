@@ -17,6 +17,8 @@ my $_toggle_read_watcher = sub {
    $self->read_handle or throw Unspecified, [ 'read handle' ];
 
    if ($want and not $loop->watching_read_handle( $self->read_handle )) {
+      $self->on_read_ready or throw Unspecified, [ 'on read ready' ];
+
       my $cb = $self->capture_weakself( 'on_read_ready' );
 
       $loop->watch_read_handle( $self->read_handle, $cb );
@@ -32,6 +34,8 @@ my $_toggle_write_watcher = sub {
    $self->write_handle or throw Unspecified, [ 'write handle' ];
 
    if ($want and not $loop->watching_write_handle( $self->write_handle )) {
+      $self->on_write_ready or throw Unspecified, [ 'on write ready' ];
+
       my $cb = $self->capture_weakself( 'on_write_ready' );
 
       $loop->watch_write_handle( $self->write_handle, $cb );
