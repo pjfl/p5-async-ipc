@@ -11,13 +11,17 @@ use Scalar::Util           qw( blessed );
 our @EXPORT_OK = qw( log_debug log_error log_info
                      read_error read_exactly terminate );
 
+my $Log_Key_Width = 15;
+
 # Private functions
 my $_padid = sub {
    my $id = shift; $id //= $PID; return pad $id, 5, 0, 'left';
 };
 
 my $_padkey = sub {
-   my ($level, $key) = @_; my $w = 15 - length $level; $w < 1 and $w = 1;
+   my ($level, $key) = @_;
+
+   my $w = $Log_Key_Width - length $level; $w < 1 and $w = 1;
 
    return pad uc( $key ), $w, SPC, 'left';
 };
@@ -33,6 +37,13 @@ my $_log_leader = sub {
 
    return "${dkey}[${did}]: ";
 };
+
+# Class methods
+sub log_key_width {
+   my ($self, $v) = @_; defined $v or return $Log_Key_Width;
+
+   return $Log_Key_Width = $v;
+}
 
 # Public functions
 sub log_debug ($$;$$) {
@@ -136,6 +147,13 @@ reference with C<name> and C<pid> attributes
 
 Logs the message at the info level. The C<$invocant> should be a object
 reference with C<name> and C<pid> attributes
+
+=head2 C<log_key_width>
+
+   $value = $self->log_key_width( $value );
+
+Class method. Accessor / mutator for the constant width used by the log message
+formatting subroutine
 
 =head2 C<read_error>
 

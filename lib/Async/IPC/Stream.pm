@@ -136,8 +136,6 @@ my $_flush_one_read = sub {
 
    my $len = length ${ $self->readbuff };
 
-   log_debug $self, "Flush one read: EOF ${eof} RET ${ret} LEN ${len}";
-
    if ($self->read_low_watermark and $self->at_read_high_watermark
        and $len < $self->read_low_watermark) {
       $self->_set_at_read_high_watermark( FALSE );
@@ -150,8 +148,9 @@ my $_flush_one_read = sub {
    elsif (@{ $readqueue } and not defined $ret) {
       shift @{ $readqueue }; $ret = TRUE;
    }
-   else { $ret = $ret && (($len > 0) || $eof) }
+   else { $ret = $ret && (($len > 0) || $eof); $ret //= FALSE }
 
+   log_debug $self, "Flush one read: EOF ${eof} RET ${ret} LEN ${len}";
    $self->_set_flushing_read( FALSE );
    return $ret;
 };

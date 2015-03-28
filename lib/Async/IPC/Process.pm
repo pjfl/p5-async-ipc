@@ -22,7 +22,7 @@ my $_watch_child = sub {
 
       log_info $self, ucfirst $self->description." stopped rv ${rv}";
 
-      return $self->on_exit ? $self->on_exit->( $self, $pid, $rv ) : TRUE;
+      return $self->maybe_invoke_event( 'on_exit', $pid, $rv );
    };
 
    $self->loop->watch_child( $pid, $self->capture_weakself( $on_exit ) );

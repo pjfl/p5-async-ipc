@@ -7,7 +7,7 @@ use AnyEvent;
 use Async::Interrupt;
 use Class::Usul::Functions qw( arg_list is_member );
 use English                qw( -no_match_vars );
-use Scalar::Util           qw( blessed );
+use Scalar::Util           qw( blessed weaken );
 
 my $Cache = {};
 
@@ -125,16 +125,20 @@ sub unwatch_read_handle {
 }
 
 sub watch_signal {
-   my ($self, $signal, $cb) = @_; my $attaches;
+   my ($self, $signal, $cb) = @_;
+
+   my $attaches; my $loop = $self; weaken( $loop );
 
    unless ($attaches = $self->$_sigattaches->{ $signal }) {
-      my $s = $self->$_events( 'signals' ); my @attaches;
+      my $s = $self->$_events( 'signals' );
 
       $s->{ $signal } = AnyEvent->signal( signal => $signal, cb => sub {
+         my @attaches = @{ $loop->$_sigattaches->{ $signal } // [] };
+
          for my $attachment (@attaches) { $attachment->() }
       } );
 
-      $attaches = $self->$_sigattaches->{ $signal } = \@attaches;
+      $attaches = $self->$_sigattaches->{ $signal } = [];
    }
 
    push @{ $attaches }, $cb; return \$attaches->[ -1 ];
