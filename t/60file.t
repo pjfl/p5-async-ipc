@@ -13,6 +13,8 @@ my $factory  =  Async::IPC->new( builder => $prog );
 my $loop     =  $factory->loop;
 my $log      =  $prog->log;
 
+$prog->config->logfile->exists and $prog->config->logfile->unlink;
+
 sub wait_for (&) {
    my ($cond) = @_; my (undef, $callerfile, $callerline) = caller;
 
@@ -35,7 +37,7 @@ my $file     = $factory->new_notifier
    (  type     => 'file',
       desc     => 'the file test notifier',
       interval => 0.5,
-      name     => 'file',
+      name     => 'file1',
       on_size_changed => sub { $size = $_[ 2 ] },
       on_stat_changed => sub {
          not $_[ 1 ] and $_[ 2 ] and $found = 1;
@@ -60,6 +62,7 @@ my $called = 0; my $count = 0;
 
 my ($rdr, $wtr) = @{ nonblocking_write_pipe_pair() };
 
+# This breaks if the interval is too small
 $file = $factory->new_notifier
    (  type     => 'file',
       desc     => 'the file test notifier',
@@ -72,9 +75,28 @@ $loop->once( 1 );
 is $called, 0, 'Stat not changed open file handle';
 $wtr->syswrite( 'xxx' ); wait_for { $called }; $called = 0;
 is $count, 1, 'Stat changed open file handle 1';
-$wtr->syswrite( 'xxx' ); wait_for { $called };
+# Printing three bytes does not work coz the size of the file doesn't change
+$wtr->syswrite( 'xxxx' ); wait_for { $called };
 is $count, 2, 'Stat changed open file handle 2';
-$prog->debug or $prog->config->logfile->unlink;
 undef $file;
 
+$called = 0;
+$count  = 0;
+$path   = io [ 't', 'inotify_test' ]; $path->touch;
+$file   = $factory->new_notifier
+   (  type => 'file',
+      desc => 'the file test notifier',
+      name => 'file3',
+      on_stat_changed => sub { $called++; $count++ },
+      path => $path, );
+
+$loop->once( 1 );
+$path->print( 'xxx' ); $path->close; wait_for { $called }; $called = 0;
+is $count, 1, 'OS dependent notifier 1';
+# Printing three bytes does not work coz the size of the file doesn't change
+$path->print( 'xxxx' ); $path->close; wait_for { $called }; $called = 0;
+is $count, 2, 'OS dependent notifier 2';
+undef $file; $path->unlink;
+
+$prog->debug or $prog->config->logfile->unlink;
 done_testing;

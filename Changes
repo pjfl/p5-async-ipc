@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - Optional use of Linux::Inotify2 in ::File
           - Added Functions::log_key_width class method
           - Sigattaches now fork safe
           - Added the type attr to Base. Make type and name unique

@@ -3,26 +3,63 @@ package Async::IPC::File;
 use namespace::autoclean;
 
 use Moo;
-use Class::Usul::Constants     qw( TRUE );
+use Async::IPC::Functions      qw( log_debug );
+use Class::Usul::Constants     qw( FALSE TRUE );
+use Class::Usul::Functions     qw( throw );
+use English                    qw( -no_match_vars );
 use File::DataClass::Constants qw( STAT_FIELDS );
 use File::DataClass::IO        qw( io );
-use File::DataClass::Types     qw( HashRef Maybe Path );
+use File::DataClass::Types     qw( HashRef Maybe Object Path );
+use Module::Load::Conditional  qw( can_load );
 use Scalar::Util               qw( blessed );
 
 extends q(Async::IPC::Periodical);
 
-has '+interval' => default => 2;
+# Private attribute builders
+my $_build_fsnotifier = sub {
+   my $notifier; $OSNAME eq 'linux'
+      and can_load( modules => { 'Linux::Inotify2' => '1.22' } )
+      and $notifier = Linux::Inotify2->new
+      or  throw 'Inotify2 object cannot create: [_1]', [ $ERRNO ];
 
-has 'events'    => is => 'ro', isa => HashRef, builder => sub { {} };
+   return $notifier;
+};
 
-has 'last_stat' => is => 'rw', isa => Maybe[HashRef];
+my $_build_watcher = sub {
+   my $self     = shift;
+   my $notifier = $self->fsnotifier or return;
+   my $path     = $self->path; ($path->name and $path->exists) or return;
+   my $watcher  = $notifier->watch( $path->name,
+                                    Linux::Inotify2::IN_ALL_EVENTS(),
+                                    $self->capture_weakself( $self->code ) )
+      or throw 'Watcher object cannot create: [_1]', [ $ERRNO ];
 
-has 'path'      => is => 'ro', isa => Path, required => TRUE;
+   return $watcher;
+};
 
+# Public attributes
+has 'events'      => is => 'ro',   isa => HashRef, builder => sub { {} };
+
+has '+interval'   => default => 2;
+
+has 'last_stat'   => is => 'rwp',  isa => Maybe[HashRef];
+
+has 'path'        => is => 'ro',   isa => Path, required => TRUE;
+
+# Private attributes
+has '_fsnotifier' => is => 'lazy', isa => Maybe[Object],
+   builder        => $_build_fsnotifier, init_arg => undef,
+   reader         => 'fsnotifier';
+
+has '_watcher'    => is => 'lazy', isa => Maybe[Object],
+   builder        => $_build_watcher, init_arg => undef, reader => 'watcher';
+
+# Private functions
 my $_stat_fields = sub {
    return [ grep { $_ ne 'blksize' && $_ ne 'blocks' } STAT_FIELDS ];
 };
 
+# Private methods
 my $_maybe_invoke_event = sub {
    my ($self, $ev_name, $old, $new) = @_; my $events = $self->events;
 
@@ -33,23 +70,27 @@ my $_maybe_invoke_event = sub {
 };
 
 my $_call_handler = sub {
-   my $self = shift; my $old = $self->last_stat; my $new = $self->path->stat;
+   my ($self, $ev) = @_;
+
+   my $old = $self->last_stat; my $new = $self->path->stat;
 
    not defined $old and not defined $new and return;
 
    if (defined $old and not defined $new) { # Path deleted
+      log_debug $self, 'Path deleted';
       $self->$_maybe_invoke_event( 'on_stat_changed', $old );
-      $self->last_stat( undef );
+      $self->_set_last_stat( undef );
       return;
    }
 
    unless (defined $old) { # Watch for the path to be created
+      log_debug $self, 'Path found';
       $self->$_maybe_invoke_event( 'on_stat_changed', undef, $new );
-      $self->last_stat( $new );
+      $self->_set_last_stat( $new );
       return;
    }
 
-   my $any_change;
+   my $any_change = FALSE;
 
    if ($old->{device} != $new->{device} or $old->{inode} != $new->{inode}) {
       $self->$_maybe_invoke_event( 'on_devino_changed', $old, $new );
@@ -65,12 +106,18 @@ my $_call_handler = sub {
 
    if ($any_change) {
       $self->$_maybe_invoke_event( 'on_stat_changed', $old, $new );
-      $self->last_stat( $new );
+      $self->_set_last_stat( $new );
    }
+
+   if (defined $ev and blessed $ev and $ev->can( 'mask' )) {
+      log_debug $self, 'Called event '.$ev->mask." change ${any_change}";
+   }
+   else { log_debug $self, "Called change ${any_change}" }
 
    return;
 };
 
+# Construction
 around 'BUILDARGS' => sub {
    my ($orig, $self, @args) = @_; my $attr = $orig->( $self, @args );
 
@@ -92,6 +139,29 @@ around 'BUILDARGS' => sub {
    $path = $attr->{path} and $attr->{last_stat} = $path->stat;
    $attr->{code} = $_call_handler;
    return $attr;
+};
+
+around 'start' => sub {
+   my ($orig, $self, @args) = @_;
+
+   my $notifier; $notifier = $self->fsnotifier and $self->watcher
+      and log_debug( $self, 'Starting '.$self->description.' native' )
+      and return $self->loop->watch_read_handle
+         ( $notifier->fileno, sub { $notifier->poll } );
+
+   return $orig->( $self, @args );
+};
+
+around 'stop' => sub {
+   my ($orig, $self, @args) = @_;
+
+   if (my $notifier = $self->fsnotifier and my $watcher = $self->watcher) {
+      $self->loop->unwatch_read_handle( $notifier->fileno ); $watcher->cancel;
+      log_debug $self, 'Stopping '.$self->description.' native';
+      return;
+   }
+
+   return $orig->( $self, @args );
 };
 
 1;
@@ -153,6 +223,10 @@ two seconds
 =head2 C<BUILDARGS>
 
 =head2 C<BUILD>
+
+=head2 C<start>
+
+=head2 C<stop>
 
 =head1 Diagnostics
 
