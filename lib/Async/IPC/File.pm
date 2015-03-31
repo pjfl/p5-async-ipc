@@ -9,7 +9,7 @@ use Class::Usul::Functions     qw( throw );
 use English                    qw( -no_match_vars );
 use File::DataClass::Constants qw( STAT_FIELDS );
 use File::DataClass::IO        qw( io );
-use File::DataClass::Types     qw( HashRef Maybe Object Path );
+use File::DataClass::Types     qw( ArrayRef HashRef Maybe Object Path );
 use Module::Load::Conditional  qw( can_load );
 use Scalar::Util               qw( blessed );
 
@@ -25,16 +25,36 @@ my $_build_fsnotifier = sub {
    return $notifier;
 };
 
-my $_build_watcher = sub {
-   my $self     = shift;
-   my $notifier = $self->fsnotifier or return;
-   my $path     = $self->path; ($path->name and $path->exists) or return;
-   my $watcher  = $notifier->watch( $path->name,
-                                    Linux::Inotify2::IN_ALL_EVENTS(),
-                                    $self->capture_weakself( $self->code ) )
+my $_create_file_watcher = sub {
+   my $self    = shift;
+   my $mask    = Linux::Inotify2::IN_ATTRIB()
+               | Linux::Inotify2::IN_DELETE_SELF()
+               | Linux::Inotify2::IN_MODIFY()
+               | Linux::Inotify2::IN_MOVE_SELF();
+   my $cb      = $self->capture_weakself( $self->code );
+   my $watcher = $self->fsnotifier->watch( $self->path->name, $mask, $cb )
       or throw 'Watcher object cannot create: [_1]', [ $ERRNO ];
 
    return $watcher;
+};
+
+my $_build_watchers = sub {
+   my $self     = shift;
+   my $notifier = $self->fsnotifier or return;
+   my $path     = $self->path; $path->name or return;
+   my $dmask    = Linux::Inotify2::IN_CREATE();
+   my $cb       = $self->capture_weakself( sub {
+      my ($self, $ev) = @_;
+
+      $ev->fullname eq $path and $self->code->( $self, $ev );
+
+      return;
+   } );
+   my $dwatch   = $notifier->watch( $path->dirname, $dmask, $cb )
+      or throw 'Watcher object cannot create: [_1]', [ $ERRNO ];
+   my $fwatch; $path->exists and $fwatch = $self->$_create_file_watcher;
+
+   return [ $dwatch, $fwatch ];
 };
 
 # Public attributes
@@ -51,8 +71,8 @@ has '_fsnotifier' => is => 'lazy', isa => Maybe[Object],
    builder        => $_build_fsnotifier, init_arg => undef,
    reader         => 'fsnotifier';
 
-has '_watcher'    => is => 'lazy', isa => Maybe[Object],
-   builder        => $_build_watcher, init_arg => undef, reader => 'watcher';
+has '_watchers'   => is => 'lazy', isa => Maybe[ArrayRef],
+   builder        => $_build_watchers, init_arg => undef, reader => 'watchers';
 
 # Private functions
 my $_stat_fields = sub {
@@ -70,23 +90,30 @@ my $_maybe_invoke_event = sub {
 };
 
 my $_call_handler = sub {
-   my ($self, $ev) = @_;
+   my ($self, $ev) = @_; my $path = $self->path;
 
-   my $old = $self->last_stat; my $new = $self->path->stat;
+   my $old = $self->last_stat; my $new = $path->stat;
 
    not defined $old and not defined $new and return;
 
    if (defined $old and not defined $new) { # Path deleted
-      log_debug $self, 'Path deleted';
+      log_debug $self, "Path ${path} deleted";
       $self->$_maybe_invoke_event( 'on_stat_changed', $old );
       $self->_set_last_stat( undef );
+
+      if ($ev and $self->watchers and $self->watchers->[ 1 ]) {
+         $self->watchers->[ 1 ]->cancel; delete $self->watchers->[ 1 ];
+      }
+
       return;
    }
 
    unless (defined $old) { # Watch for the path to be created
-      log_debug $self, 'Path found';
+      log_debug $self, "Path ${path} found";
       $self->$_maybe_invoke_event( 'on_stat_changed', undef, $new );
       $self->_set_last_stat( $new );
+      $ev and $self->watchers and not $self->watchers->[ 1 ]
+          and $self->watchers->[ 1 ] = $self->$_create_file_watcher;
       return;
    }
 
@@ -144,7 +171,7 @@ around 'BUILDARGS' => sub {
 around 'start' => sub {
    my ($orig, $self, @args) = @_;
 
-   my $notifier; $notifier = $self->fsnotifier and $self->watcher
+   my $notifier; $notifier = $self->fsnotifier and $self->watchers
       and log_debug( $self, 'Starting '.$self->description.' native' )
       and return $self->loop->watch_read_handle
          ( $notifier->fileno, sub { $notifier->poll } );
@@ -155,9 +182,10 @@ around 'start' => sub {
 around 'stop' => sub {
    my ($orig, $self, @args) = @_;
 
-   if (my $notifier = $self->fsnotifier and my $watcher = $self->watcher) {
-      $self->loop->unwatch_read_handle( $notifier->fileno ); $watcher->cancel;
+   if (my $notifier = $self->fsnotifier and my $watchers = $self->watchers) {
       log_debug $self, 'Stopping '.$self->description.' native';
+      $self->loop->unwatch_read_handle( $notifier->fileno );
+      $watchers->[ 0 ]->cancel; $watchers->[ 1 ] and $watchers->[ 1 ]->cancel;
       return;
    }
 

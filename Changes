@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - Native file watcher now looks for new files
           - Optional use of Linux::Inotify2 in ::File
           - Added Functions::log_key_width class method
           - Sigattaches now fork safe

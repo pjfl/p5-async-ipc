@@ -32,7 +32,7 @@ sub wait_for (&) {
 my $found    = 0;
 my $lost     = 0;
 my $size     = 0;
-my $path     = io [ 't', 'dummy' ];
+my $path     = io [ 't', 'dummy' ]; $path->exists and $path->unlink;
 my $file     = $factory->new_notifier
    (  type     => 'file',
       desc     => 'the file test notifier',
@@ -51,10 +51,10 @@ $path->touch; wait_for { $found };
 is $found, 1, 'File found';
 is $lost,  0, 'File not lost';
 is $size,  0, 'File size zero';
-$path->print( 'xxx' ); $path->close; wait_for { $size };
+$path->print( 'xxx' )->flush; wait_for { $size };
 is $lost,  0, 'File still not lost';
 is $size,  3, 'File size non zero';
-$path->exists and $path->unlink; wait_for { $lost };
+$path->exists and $path->close->unlink; wait_for { $lost };
 is $lost,  1, 'File lost';
 undef $file;
 
@@ -91,12 +91,22 @@ $file   = $factory->new_notifier
       path => $path, );
 
 $loop->once( 1 );
-$path->print( 'xxx' ); $path->close; wait_for { $called }; $called = 0;
+is $count, 0, 'OS dependent starts zero';
+$path->print( 'xxx' )->flush;
+wait_for { $called }; $called = 0;
 is $count, 1, 'OS dependent notifier 1';
 # Printing three bytes does not work coz the size of the file doesn't change
-$path->print( 'xxxx' ); $path->close; wait_for { $called }; $called = 0;
+$path->print( 'xxxx' )->flush;
+wait_for { $called }; $called = 0;
 is $count, 2, 'OS dependent notifier 2';
-undef $file; $path->unlink;
+$path->close->unlink;
+wait_for { $called }; $called = 0;
+is $count, 3, 'OS dependent notifier 3';
+$path->print( 'xxx' )->flush;
+wait_for { $called }; $called = 0;
+is $count, 4, 'OS dependent notifier 4';
+$path->close->unlink;
+undef $file;
 
 $prog->debug or $prog->config->logfile->unlink;
 done_testing;
