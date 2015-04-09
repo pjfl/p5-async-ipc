@@ -1,7 +1,6 @@
 package Async::IPC::Loop;
 
 use strictures;
-use feature 'state';
 
 use AnyEvent;
 use Async::Interrupt;
@@ -9,11 +8,15 @@ use Class::Usul::Functions qw( arg_list is_member );
 use English                qw( -no_match_vars );
 use Scalar::Util           qw( blessed weaken );
 
-my $Cache = {};
+my $Cache = {}; my $UUID = 1;
 
 # Private methods
 my $_events = sub { # Do not share state between forks
    return $Cache->{ $PID }->{ $_[ 1 ] } ||= {};
+};
+
+my $_log = sub {
+   return $_[ 0 ]->{builder}->log;
 };
 
 my $_sigattaches = sub {
@@ -149,9 +152,9 @@ sub watching_signal {
 
    my $watching = (exists $s->{ $signal }) && (defined $s->{ $signal });
 
-   (not $watching or not defined $id) and return $watching;
+   (not $watching or not defined $id) and return $watching ? 1 : 0;
 
-   return is_member $id, $self->$_sigattaches->{ $signal };
+   return is_member $id, map { \$_ } @{ $self->$_sigattaches->{ $signal } };
 }
 
 sub unwatch_signal {
@@ -224,7 +227,7 @@ sub unwatch_write_handle {
 }
 
 sub uuid {
-   state $uuid //= 1; return $uuid++;
+   return $UUID++;
 }
 
 1;

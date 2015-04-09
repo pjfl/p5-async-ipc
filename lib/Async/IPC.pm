@@ -2,7 +2,7 @@ package Async::IPC;
 
 use 5.010001;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 13 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 14 $ =~ /\d+/gmx );
 
 use Moo;
 use Async::IPC::Loop;
@@ -13,7 +13,7 @@ use Unexpected::Functions  qw( Unspecified );
 
 # Public attributes
 has 'loop'    => is => 'lazy', isa => Object,
-   builder    => sub { Async::IPC::Loop->new };
+   builder    => sub { Async::IPC::Loop->new( builder => $_[ 0 ]->builder ) };
 
 # Private attributes
 has 'builder' => is => 'ro',   isa => BaseType, required => TRUE;

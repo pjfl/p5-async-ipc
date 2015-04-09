@@ -8,7 +8,7 @@ use Class::Usul::Functions qw( pad );
 use English                qw( -no_match_vars );
 use Scalar::Util           qw( blessed );
 
-our @EXPORT_OK = qw( log_debug log_error log_info
+our @EXPORT_OK = qw( log_debug log_error log_info log_warn
                      read_error read_exactly terminate );
 
 my $Log_Key_Width = 15;
@@ -64,6 +64,13 @@ sub log_info ($$;$$) {
    my ($log, $name, $pid, $mesg) = $_log_attr->( @_ );
 
    $log->info( $_log_leader->( 'info', $name, $pid).$mesg );
+   return TRUE;
+}
+
+sub log_warn ($$;$$) {
+   my ($log, $name, $pid, $mesg) = $_log_attr->( @_ );
+
+   $log->warn( $_log_leader->( 'warn', $name, $pid).$mesg );
    return TRUE;
 }
 
@@ -146,6 +153,13 @@ reference with C<name> and C<pid> attributes
    log_info $invocant, $message;
 
 Logs the message at the info level. The C<$invocant> should be a object
+reference with C<name> and C<pid> attributes
+
+=head2 C<log_warn>
+
+   log_warn $invocant, $message;
+
+Logs the message at the warn level. The C<$invocant> should be a object
 reference with C<name> and C<pid> attributes
 
 =head2 C<log_key_width>

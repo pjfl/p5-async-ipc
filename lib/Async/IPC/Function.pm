@@ -1,6 +1,5 @@
 package Async::IPC::Function;
 
-use feature 'state';
 use namespace::autoclean;
 
 use Moo;

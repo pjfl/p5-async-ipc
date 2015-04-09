@@ -31,8 +31,8 @@ my $_build_channel = sub {
 
    return $self->factory->new_notifier
       ( type        => 'channel',
-        description => $self->description." ${dirn} channel ${channel_no}",
         name        => $self->name."_${dirn}_ch${channel_no}",
+        description => $self->description." ${dirn} channel ${channel_no}",
         %args );
 };
 
@@ -83,10 +83,10 @@ my $_build_call_chs = sub {
 my $_build_child = sub {
    my $self = shift; return $self->factory->new_notifier
       ( { type        => 'process',
+          name        => $self->name,
+          description => $self->description,
           code        => $self->call_ch_mode eq 'async'
                        ? $self->async_call_handler : $self->sync_call_handler,
-          description => $self->description,
-          name        => $self->name,
           %{ $self->child_args }, } );
 };
 
@@ -141,9 +141,9 @@ around 'BUILDARGS' => sub {
    }
 
    $attr->{child_args} = $args;
-   exists $attr->{on_recv} and defined $attr->{on_recv}
+   exists $attr->{on_recv  } and defined $attr->{on_recv}
       and not is_arrayref $attr->{on_recv}
-      and $attr->{on_recv} = [ $attr->{on_recv} ];
+      and $attr->{on_recv  } = [ $attr->{on_recv} ];
    exists $attr->{on_return} and defined $attr->{on_return}
       and not is_arrayref $attr->{on_return}
       and $attr->{on_return} = [ $attr->{on_return} ];
@@ -190,9 +190,9 @@ sub call {
 }
 
 sub call_channel {
-   my ($self, $channel_no, @args) = @_;
+   my ($self, $channel_no, @args) = @_; $self->is_running or return;
 
-   $self->is_running or return; $args[ 0 ] ||= bson64id;
+   $args[ 0 ] ||= bson64id; # First arg is unique and sent by the return channel
 
    return $self->call_chs->[ $channel_no ]->send( [ @args ] );
 }
