@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - Refactored logging functions
           - MCP runs test loop
           - Native file watcher now looks for new files
           - Optional use of Linux::Inotify2 in ::File

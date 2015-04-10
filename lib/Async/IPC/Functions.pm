@@ -4,7 +4,7 @@ use strictures;
 use parent 'Exporter::Tiny';
 
 use Class::Usul::Constants qw( FALSE NUL SPC TRUE );
-use Class::Usul::Functions qw( pad );
+use Class::Usul::Functions qw( is_coderef pad );
 use English                qw( -no_match_vars );
 use Scalar::Util           qw( blessed );
 
@@ -14,6 +14,13 @@ our @EXPORT_OK = qw( log_debug log_error log_info log_warn
 my $Log_Key_Width = 15;
 
 # Private functions
+my $_is_notifier = sub {
+   return (blessed $_[ 0 ]
+           &&      $_[ 0 ]->can( 'log'  )
+           &&      $_[ 0 ]->can( 'name' )
+           &&      $_[ 0 ]->can( 'pid'  )) ? TRUE : FALSE;
+};
+
 my $_padid = sub {
    my $id = shift; $id //= $PID; return pad $id, 5, 0, 'left';
 };
@@ -26,16 +33,23 @@ my $_padkey = sub {
    return pad uc( $key ), $w, SPC, 'left';
 };
 
-my $_log_attr = sub {
-   return (blessed $_[ 0 ] && $_[ 0 ]->can( 'log' ))
-        ? ($_[ 0 ]->log, $_[ 0 ]->name, $_[ 0 ]->pid, $_[ 1 ])
-        : @_;
+my $_parse_log_args = sub {
+   my $x = shift;
+
+   return ($_is_notifier->( $x )) ? ($x->log, $x->name, $x->pid, @_)
+        : (      is_coderef $x  ) ? ($x->(), @_)
+                                  : ($x, @_);
 };
 
 my $_log_leader = sub {
-   my $dkey = $_padkey->( $_[ 0 ], $_[ 1 ] ); my $did = $_padid->( $_[ 2 ] );
+   return $_padkey->( $_[ 0 ], $_[ 1 ] ).'['.$_padid->( $_[ 2 ] ).']';
+};
 
-   return "${dkey}[${did}]: ";
+my $_logger = sub {
+   my $level = shift; my ($log, $key, $pid, $msg) = $_parse_log_args->( @_ );
+
+   $log->$level( $_log_leader->( $level, $key, $pid ).": ${msg}" );
+   return TRUE;
 };
 
 # Class methods
@@ -47,38 +61,26 @@ sub log_key_width {
 
 # Public functions
 sub log_debug ($$;$$) {
-   my ($log, $name, $pid, $mesg) = $_log_attr->( @_ );
-
-   $log->debug( $_log_leader->( 'debug', $name, $pid).$mesg );
-   return TRUE;
+   return $_logger->( 'debug', @_ );
 }
 
 sub log_error ($$;$$) {
-   my ($log, $name, $pid, $mesg) = $_log_attr->( @_ );
-
-   $log->error( $_log_leader->( 'error', $name, $pid).$mesg );
-   return TRUE;
+   return $_logger->( 'error', @_ );
 }
 
 sub log_info ($$;$$) {
-   my ($log, $name, $pid, $mesg) = $_log_attr->( @_ );
-
-   $log->info( $_log_leader->( 'info', $name, $pid).$mesg );
-   return TRUE;
+   return $_logger->( 'info', @_ );
 }
 
 sub log_warn ($$;$$) {
-   my ($log, $name, $pid, $mesg) = $_log_attr->( @_ );
-
-   $log->warn( $_log_leader->( 'warn', $name, $pid).$mesg );
-   return TRUE;
+   return $_logger->( 'warn', @_ );
 }
 
 sub read_error ($$) {
-   my ($self, $red) = @_;
+   my ($notifier, $red) = @_;
 
-   not defined $red and log_error( $self, $OS_ERROR ) and return TRUE;
-   not length  $red and log_debug( $self, 'EOF'     ) and return TRUE;
+   not defined $red and return log_error( $notifier, $OS_ERROR );
+   not length  $red and return log_debug( $notifier, 'EOF'     );
 
    return FALSE;
 }
