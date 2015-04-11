@@ -79,7 +79,7 @@ my $_on_stream_read = sub {
 
    my $record = $self->decode->( substr ${ $buf_ref }, 4, $len );
 
-   substr( ${ $buf_ref }, 0, 4 + $len) = NUL;
+   substr( ${ $buf_ref }, 0, 4 + $len) = NUL; # Truncate on the left
 
    my $result = shift @{ $self->result_queue };
 
@@ -157,15 +157,15 @@ has 'decode'       => is => 'lazy', isa => CodeRef, builder => $_build_decode;
 
 has 'encode'       => is => 'lazy', isa => CodeRef, builder => $_build_encode;
 
+has 'handle_pair'  => is => 'lazy', isa => ArrayRef,
+   builder         => sub { nonblocking_write_pipe_pair() };
+
 has 'on_eof'       => is => 'ro',   isa => Maybe[CodeRef];
 
 has 'on_recv'      => is => 'ro',   isa => Maybe[CodeRef];
 
-has 'pair'         => is => 'lazy', isa => ArrayRef,
-   builder         => sub { nonblocking_write_pipe_pair() };
-
 has 'read_handle'  => is => 'rwp',  isa => Maybe[FileHandle],
-   builder         => sub { $_[ 0 ]->pair->[ 0 ] }, lazy => TRUE;
+   builder         => sub { $_[ 0 ]->handle_pair->[ 0 ] }, lazy => TRUE;
 
 has 'read_mode'    => is => 'lazy', isa => $MODE_TYPE, default => 'sync';
 
@@ -174,7 +174,7 @@ has 'result_queue' => is => 'ro',   isa => ArrayRef, builder => sub { [] };
 has 'stream'       => is => 'lazy', isa => Object,   builder => $_build_stream;
 
 has 'write_handle' => is => 'rwp',  isa => Maybe[FileHandle],
-   builder         => sub { $_[ 0 ]->pair->[ 1 ] }, lazy => TRUE;
+   builder         => sub { $_[ 0 ]->handle_pair->[ 1 ] }, lazy => TRUE;
 
 has 'write_mode'   => is => 'ro',   isa => $MODE_TYPE, default => 'sync';
 
@@ -274,11 +274,11 @@ Defines the following attributes;
 
 =item C<encode>
 
+=item C<handle_pair>
+
 =item C<on_eof>
 
 =item C<on_recv>
-
-=item C<pair>
 
 =item C<read_handle>
 

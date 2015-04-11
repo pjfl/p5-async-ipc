@@ -2,7 +2,7 @@ package Async::IPC;
 
 use 5.010001;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 15 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 16 $ =~ /\d+/gmx );
 
 use Moo;
 use Async::IPC::Loop;
@@ -24,7 +24,7 @@ sub new_notifier {
 
    my $type  = $args->{type} or throw Unspecified, [ 'type' ];
 
-   my $class = first_char $type eq '+' ? (substr $type, 1)
+   my $class = first_char $type eq '+' ? ($args->{type} = substr $type, 1)
                                        : __PACKAGE__.'::'.(ucfirst $type);
 
    ensure_class_loaded $class;

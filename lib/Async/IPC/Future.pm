@@ -15,7 +15,7 @@ sub new {
 }
 
 sub loop {
-   my $self = shift; return $self->{loop};
+   return $_[ 0 ]->{loop};
 }
 
 sub await {
