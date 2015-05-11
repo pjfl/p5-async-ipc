@@ -184,7 +184,7 @@ sub BUILD {
 }
 
 sub DEMOLISH {
-   $_[ 0 ]->close; return;
+   my ($self, $gd) = @_; $gd and return; $self->close; return;
 }
 
 # Public methods

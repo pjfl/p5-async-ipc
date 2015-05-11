@@ -21,7 +21,11 @@ around 'BUILDARGS' => sub {
 };
 
 sub DEMOLISH {
-   my $self = shift; eval { $self->lock->reset( k => refaddr $self ) }; return;
+   my ($self, $gd) = @_; $gd and return;
+
+   eval { $self->lock->reset( k => refaddr $self ) };
+
+   return;
 }
 
 # Public methods

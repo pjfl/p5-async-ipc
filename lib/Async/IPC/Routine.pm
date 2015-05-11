@@ -160,7 +160,7 @@ sub BUILD {
 }
 
 sub DEMOLISH {
-   my $self = shift; $self->stop; return;
+   my ($self, $gd) = @_; $gd and return; $self->stop; return;
 }
 
 # Public methods

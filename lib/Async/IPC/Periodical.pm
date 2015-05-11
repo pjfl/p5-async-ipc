@@ -34,7 +34,7 @@ sub BUILD {
 }
 
 sub DEMOLISH {
-   $_[ 0 ]->stop; return;
+   my ($self, $gd) = @_; $gd and return; $self->stop; return;
 }
 
 # Public methods

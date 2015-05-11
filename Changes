@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - Added global destruction flag to DEMOLISH subs
           - Renamed Channel pair attr to handle_pair
           - Refactored logging functions
           - MCP runs test loop
