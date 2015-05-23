@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - Added install of libev to Travis config
           - Configured for Github
           - Added global destruction flag to DEMOLISH subs
           - Renamed Channel pair attr to handle_pair

@@ -2,3 +2,8 @@ language: perl
 branches:
   only:
     - master
+before_install:
+  - sudo apt-get install libev4
+install:
+  - cpanm -v --installdeps --notest --mirror http://cpan.mirrors.travis-ci.org .
+script: "perl Build.PL; ./Build test"

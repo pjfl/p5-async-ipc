@@ -1,3 +1,7 @@
+<div>
+    <a href="https://travis-ci.org/pjfl/p5-async-ipc"><img src="https://travis-ci.org/pjfl/p5-async-ipc.svg?branch=master" alt="Travis CI Badge"></a>
+</div>
+
 # Name
 
 Async::IPC - Asyncronous inter process communication
