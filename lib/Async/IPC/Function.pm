@@ -2,13 +2,13 @@ package Async::IPC::Function;
 
 use namespace::autoclean;
 
-use Moo;
 use Async::IPC::Functions  qw( log_debug );
 use Class::Usul::Constants qw( FALSE OK TRUE );
 use Class::Usul::Functions qw( bson64id );
 use Class::Usul::Types     qw( ArrayRef Bool HashRef NonZeroPositiveInt
                                Object PositiveInt SimpleStr );
 use English                qw( -no_match_vars );
+use Moo;
 
 extends q(Async::IPC::Base);
 
@@ -273,7 +273,7 @@ Peter Flanigan, C<< <pjfl@cpan.org> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2014 Peter Flanigan. All rights reserved
+Copyright (c) 2015 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

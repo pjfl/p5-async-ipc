@@ -2,7 +2,6 @@ package Async::IPC::Stream;
 
 use namespace::autoclean;
 
-use Moo;
 use Async::IPC::Functions  qw( log_debug log_error );
 use Encode 2.11            qw( find_encoding STOP_AT_PARTIAL );
 use Errno                  qw( EAGAIN EWOULDBLOCK EINTR EPIPE );
@@ -14,6 +13,7 @@ use Class::Usul::Types     qw( ArrayRef Bool CodeRef EncodingType Maybe
 use English                qw( -no_match_vars );
 use Scalar::Util           qw( blessed );
 use Unexpected::Functions  qw( Unspecified );
+use Moo;
 
 extends q(Async::IPC::Handle);
 

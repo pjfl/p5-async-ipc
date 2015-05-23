@@ -2,7 +2,6 @@ package Async::IPC::Base;
 
 use namespace::autoclean;
 
-use Moo;
 use Async::IPC;
 use Async::IPC::Functions  qw( log_debug );
 use Class::Usul::Constants qw( FALSE TRUE );
@@ -11,6 +10,7 @@ use Class::Usul::Types     qw( BaseType Bool CodeRef HashRef Maybe
                                NonEmptySimpleStr Object PositiveInt );
 use English                qw( -no_match_vars );
 use Scalar::Util           qw( blessed weaken );
+use Moo;
 
 my $Notifiers = {};
 
@@ -281,7 +281,7 @@ Peter Flanigan, C<< <pjfl@cpan.org> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2014 Peter Flanigan. All rights reserved
+Copyright (c) 2015 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

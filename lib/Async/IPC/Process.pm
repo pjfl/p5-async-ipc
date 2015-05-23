@@ -2,7 +2,6 @@ package Async::IPC::Process;
 
 use namespace::autoclean;
 
-use Moo;
 use Async::IPC::Functions  qw( log_debug log_info );
 use Class::Usul::Constants qw( FALSE TRUE );
 use Class::Usul::Functions qw( is_coderef );
@@ -10,6 +9,7 @@ use Class::Usul::Types     qw( ArrayRef CodeRef HashRef
                                NonEmptySimpleStr Undef );
 use English                qw( -no_match_vars );
 use POSIX                  qw( WEXITSTATUS );
+use Moo;
 
 extends q(Async::IPC::Base);
 
@@ -196,7 +196,7 @@ Peter Flanigan, C<< <pjfl@cpan.org> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2014 Peter Flanigan. All rights reserved
+Copyright (c) 2015 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

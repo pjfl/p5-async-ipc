@@ -2,7 +2,6 @@ package Async::IPC::Channel;
 
 use namespace::autoclean;
 
-use Moo;
 use Async::IPC::Functions  qw( log_debug log_error read_error read_exactly );
 use Class::Usul::Constants qw( FALSE NUL TRUE );
 use Class::Usul::Functions qw( ensure_class_loaded nonblocking_write_pipe_pair
@@ -10,6 +9,7 @@ use Class::Usul::Functions qw( ensure_class_loaded nonblocking_write_pipe_pair
 use Class::Usul::Types     qw( ArrayRef CodeRef FileHandle Maybe Object );
 use English                qw( -no_match_vars );
 use Type::Utils            qw( enum );
+use Moo;
 
 extends q(Async::IPC::Base);
 

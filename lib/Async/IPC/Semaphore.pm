@@ -2,9 +2,9 @@ package Async::IPC::Semaphore;
 
 use namespace::autoclean;
 
-use Moo;
 use Class::Usul::Constants qw( TRUE );
 use Scalar::Util           qw( refaddr );
+use Moo;
 
 extends q(Async::IPC::Routine);
 
@@ -120,7 +120,7 @@ Peter Flanigan, C<< <pjfl@cpan.org> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2014 Peter Flanigan. All rights reserved
+Copyright (c) 2015 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

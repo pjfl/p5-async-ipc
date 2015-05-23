@@ -2,12 +2,12 @@ package Async::IPC::Handle;
 
 use namespace::autoclean;
 
-use Moo;
 use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE TRUE );
 use Class::Usul::Functions qw( throw );
 use Class::Usul::Types     qw( ArrayRef Bool CodeRef FileHandle Maybe Object );
 use IO::Handle;
 use Unexpected::Functions  qw( Unspecified );
+use Moo;
 
 extends q(Async::IPC::Base);
 

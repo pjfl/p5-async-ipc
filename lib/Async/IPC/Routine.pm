@@ -2,7 +2,6 @@ package Async::IPC::Routine;
 
 use namespace::autoclean;
 
-use Moo;
 use Async::IPC::Functions  qw( log_error terminate );
 use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE OK TRUE );
 use Class::Usul::Functions qw( bson64id is_arrayref throw );
@@ -11,6 +10,7 @@ use Class::Usul::Types     qw( ArrayRef Bool CodeRef
 use Try::Tiny;
 use Type::Utils            qw( enum );
 use Unexpected::Functions  qw( Unspecified );
+use Moo;
 
 extends q(Async::IPC::Base);
 
@@ -412,7 +412,7 @@ Peter Flanigan, C<< <pjfl@cpan.org> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2014 Peter Flanigan. All rights reserved
+Copyright (c) 2015 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

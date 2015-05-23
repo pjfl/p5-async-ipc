@@ -2,7 +2,6 @@ package Async::IPC::File;
 
 use namespace::autoclean;
 
-use Moo;
 use Async::IPC::Functions      qw( log_debug );
 use Class::Usul::Constants     qw( FALSE TRUE );
 use Class::Usul::Functions     qw( throw );
@@ -12,6 +11,7 @@ use File::DataClass::IO        qw( io );
 use File::DataClass::Types     qw( ArrayRef HashRef Maybe Object Path );
 use Module::Load::Conditional  qw( can_load );
 use Scalar::Util               qw( blessed );
+use Moo;
 
 extends q(Async::IPC::Periodical);
 
