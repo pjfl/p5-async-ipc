@@ -57,11 +57,10 @@ $routine =  $factory->new_notifier
       max_calls    => $max_calls,
       after        => sub { $after->touch },
       before       => sub { $before->touch },
+      on_exit      => sub { $loop->stop },
       on_recv      => sub { shift; shift; sum @_ },
       on_return    => sub {
          my $self = shift; $results->{ $_[ 0 ]->[ 0 ] } = $_[ 0 ]->[ 1 ];
-         my $count = () = keys %{ $results };
-         $count >= $max_calls and $loop->stop;
          return 1 }, );
 
 ok !$after->exists, 'Has not called after';

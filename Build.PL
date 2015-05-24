@@ -33,6 +33,8 @@ my $prereqs  = {
     'strictures' => '1.005005'
   },
 };
+my $osname   = lc $^O; $osname eq 'linux'
+   and $prereqs->{requires}->{ 'Linux::Inotify2' } = '1.22';
 
 if ($] < $perl_ver) { # Not interested in reports below min perl ver
    testing or whimper "Minimum required Perl version is ${perl_ver}";

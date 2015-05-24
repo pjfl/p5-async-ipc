@@ -1,6 +1,7 @@
 use t::boilerplate;
 
 use Test::More;
+use Test::Requires { 'Linux::Inotify2' => 1.22 };
 use Class::Usul::Programs;
 use File::Temp qw( tempfile );
 

@@ -1,6 +1,7 @@
 use t::boilerplate;
 
 use Test::More;
+use Test::Requires { 'Linux::Inotify2' => 1.22 };
 use Class::Usul::Functions qw( nonblocking_write_pipe_pair );
 use Class::Usul::Programs;
 use File::DataClass::IO qw( io );
@@ -24,7 +25,8 @@ sub wait_for (&) {
    $loop->once( 1 ) while (not $cond->() and not $timedout);
 
    if ($timedout) {
-      die "Nothing was ready after 10 second wait; called at $callerfile line $callerline\n";
+      die "Nothing was ready after 10 second wait; called at $callerfile "
+        . "line $callerline\n";
    }
    else { $loop->unwatch_time( $timerid ) }
 }
@@ -63,22 +65,28 @@ my $called = 0; my $count = 0;
 my ($rdr, $wtr) = @{ nonblocking_write_pipe_pair() };
 
 # This breaks if the interval is too small
-$file = $factory->new_notifier
-   (  type     => 'file',
-      desc     => 'the file test notifier',
-      handle   => $rdr,
-      interval => 1,
-      name     => 'file2',
-      on_stat_changed => sub { $called++; $count++ }, );
+SKIP: {
+   $ENV{AUTHOR_TESTING} or skip 'Too fragile', 1;
 
-$loop->once( 1 );
-is $called, 0, 'Stat not changed open file handle';
-$wtr->syswrite( 'xxx' ); wait_for { $called }; $called = 0;
-is $count, 1, 'Stat changed open file handle 1';
+   $file = $factory->new_notifier
+      (  type     => 'file',
+         desc     => 'the file test notifier',
+         handle   => $rdr,
+         interval => 2,
+         name     => 'file2',
+         on_stat_changed => sub { $called++; $count++ }, );
+
+   $loop->once( 1 );
+   is $called, 0, 'Stat not changed open file handle';
+   is $wtr->syswrite( 'xxx' ), 3, 'Writes 3 bytes';
+   wait_for { $called }; $called = 0;
+   is $count, 1, 'Stat changed open file handle 1';
 # Printing three bytes does not work coz the size of the file doesn't change
-$wtr->syswrite( 'xxxx' ); wait_for { $called };
-is $count, 2, 'Stat changed open file handle 2';
-undef $file;
+   is $wtr->syswrite( 'xxxx' ), 4, 'Write 4 bytes';
+   wait_for { $called };
+   is $count, 2, 'Stat changed open file handle 2';
+   undef $file;
+}
 
 $called = 0;
 $count  = 0;
