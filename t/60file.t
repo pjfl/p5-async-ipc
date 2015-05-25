@@ -64,7 +64,7 @@ my $called = 0; my $count = 0;
 
 my ($rdr, $wtr) = @{ nonblocking_write_pipe_pair() };
 
-# This breaks if the interval is too small
+# This breaks if the interval is too small < 2
 SKIP: {
    $ENV{AUTHOR_TESTING} or skip 'Too fragile', 1;
 

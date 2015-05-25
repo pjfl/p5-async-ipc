@@ -24,6 +24,7 @@ my $prereqs  = {
     'AnyEvent' => '7.07',
     'Async::Interrupt' => '1.2',
     'Class::Usul' => 'v0.51.0',
+    'EV' => '4.18',
     'Exporter::Tiny' => '0.042',
     'Future' => '0.32',
     'Moo' => '1.006000',

@@ -1,6 +1,7 @@
 requires "AnyEvent" => "7.07";
 requires "Async::Interrupt" => "1.2";
 requires "Class::Usul" => "v0.51.0";
+requires "EV" => "4.18";
 requires "Exporter::Tiny" => "0.042";
 requires "Future" => "0.32";
 requires "Moo" => "1.006000";

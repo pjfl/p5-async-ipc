@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - Added EV as a dependency
           - Fixed tests on test server
           - Added install of libev to Travis config
           - Configured for Github
