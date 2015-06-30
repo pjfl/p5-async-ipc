@@ -27,11 +27,11 @@ my $_nonfatal_error = sub {
 my $_reduce_queue = sub {
    my $queue = shift; my $head = $queue->[ 0 ]; my $second;
 
-   while( $second = $queue->[ 1 ]
+   while ($second = $queue->[ 1 ]
           and not ref $second->data
           and $head->writelen == $second->writelen
           and not $head->on_write and not $second->on_write
-          and not $head->on_flush ) {
+          and not $head->on_flush) {
       $head->data    .= $second->data;
       $head->on_write = $second->on_write;
       $head->on_flush = $second->on_flush;

@@ -21,17 +21,20 @@ my $prereqs  = {
     'version' => '0.88'
   },
   'requires' => {
-    'AnyEvent' => '7.07',
-    'Async::Interrupt' => '1.2',
-    'Class::Usul' => 'v0.51.0',
+    'AnyEvent' => '7.09',
+    'Async::Interrupt' => '1.21',
+    'Class::Usul' => 'v0.63.0',
     'EV' => '4.18',
     'Exporter::Tiny' => '0.042',
+    'File::DataClass' => 'v0.63.0',
     'Future' => '0.32',
-    'Moo' => '1.006000',
+    'Moo' => '2.000001',
     'Try::Tiny' => '0.22',
-    'namespace::autoclean' => '0.20',
+    'Type::Tiny' => '1.000005',
+    'Unexpected' => 'v0.38.0',
+    'namespace::autoclean' => '0.26',
     'perl' => '5.010001',
-    'strictures' => '1.005005'
+    'strictures' => '2.000000'
   },
 };
 my $osname   = lc $^O; $osname eq 'linux'
