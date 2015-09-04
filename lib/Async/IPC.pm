@@ -2,12 +2,12 @@ package Async::IPC;
 
 use 5.010001;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 23 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 24 $ =~ /\d+/gmx );
 
 use Async::IPC::Loop;
 use Class::Usul::Constants qw( EXCEPTION_CLASS TRUE );
 use Class::Usul::Functions qw( arg_list ensure_class_loaded first_char throw );
-use Class::Usul::Types     qw( BaseType Object );
+use Class::Usul::Types     qw( Object Plinth );
 use Unexpected::Functions  qw( Unspecified );
 use Moo;
 
@@ -16,7 +16,7 @@ has 'loop'    => is => 'lazy', isa => Object,
    builder    => sub { Async::IPC::Loop->new( builder => $_[ 0 ]->builder ) };
 
 # Private attributes
-has 'builder' => is => 'ro',   isa => BaseType, required => TRUE;
+has 'builder' => is => 'ro',   isa => Plinth, required => TRUE;
 
 # Public methods
 sub new_notifier {

@@ -6,8 +6,8 @@ use Async::IPC;
 use Async::IPC::Functions  qw( log_debug );
 use Class::Usul::Constants qw( FALSE TRUE );
 use Class::Usul::Functions qw( is_coderef throw );
-use Class::Usul::Types     qw( BaseType Bool CodeRef HashRef Maybe
-                               NonEmptySimpleStr Object PositiveInt );
+use Class::Usul::Types     qw( Bool CodeRef HashRef Maybe NonEmptySimpleStr
+                               Object Plinth PositiveInt );
 use English                qw( -no_match_vars );
 use Scalar::Util           qw( blessed weaken );
 use Moo;
@@ -17,8 +17,8 @@ my $Notifiers = {};
 # Public attributes
 has 'autostart'   => is => 'ro',   isa => Bool, default => TRUE;
 
-has 'builder'     => is => 'ro',   isa => BaseType,
-   handles        => [ qw( config debug lock log run_cmd ) ], required => TRUE;
+has 'builder'     => is => 'ro',   isa => Plinth, required => TRUE,
+   handles        => [ 'config', 'debug', 'lock', 'log', 'run_cmd' ];
 
 has 'description' => is => 'ro',   isa => NonEmptySimpleStr, required => TRUE;
 
@@ -76,7 +76,7 @@ my $_invoke_event = sub {
 
 # Public methods
 sub adopt_future {
-   my ($self, $f) = @_; my $fkey = "$f"; # Stable stringification
+   my ($self, $f) = @_; my $fkey = "${f}"; # Stable stringification
 
    $self->futures->{ $fkey } = $f;
 

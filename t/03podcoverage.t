@@ -17,7 +17,9 @@ eval "use Test::Pod::Coverage 1.04";
 
 $EVAL_ERROR and plan skip_all => 'Test::Pod::Coverage 1.04 required';
 
-all_pod_coverage_ok();
+my $skip = 'EAGAIN | EINTR | EPIPE | EWOULDBLOCK | SEEK_SET';
+
+all_pod_coverage_ok( { also_private => [ qr{ (?: $skip ) }mx, ] } );
 
 # Local Variables:
 # mode: perl

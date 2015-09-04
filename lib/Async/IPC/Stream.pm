@@ -7,7 +7,7 @@ use Encode 2.11            qw( find_encoding STOP_AT_PARTIAL );
 use Errno                  qw( EAGAIN EWOULDBLOCK EINTR EPIPE );
 use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE NUL TRUE );
 use Class::Usul::Functions qw( is_coderef throw );
-use Class::Usul::Types     qw( ArrayRef Bool CodeRef EncodingType Maybe
+use Class::Usul::Types     qw( ArrayRef Bool CodeRef DataEncoding Maybe
                                NonEmptySimpleStr NonZeroPositiveInt Object
                                PositiveInt ScalarRef Str );
 use English                qw( -no_match_vars );
@@ -344,7 +344,7 @@ has 'close_on_read_eof'         => is => 'ro',   isa => Bool, default => TRUE;
 has 'encoder'                   => is => 'lazy', isa => Maybe[Object],
    builder                      => $_build_encoder;
 
-has 'encoding'                  => is => 'ro',   isa => Maybe[EncodingType];
+has 'encoding'                  => is => 'ro',   isa => Maybe[DataEncoding];
 
 has 'flushing_read'             => is => 'rwp',  isa => Bool, default => FALSE;
 

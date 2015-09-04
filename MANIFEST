@@ -1,11 +1,6 @@
 Build.PL
 Changes
-LICENSE
 MANIFEST
-META.json
-META.yml
-README
-SIGNATURE
 lib/Async/IPC.pm
 lib/Async/IPC/Base.pm
 lib/Async/IPC/Channel.pm
@@ -21,7 +16,6 @@ lib/Async/IPC/Process.pm
 lib/Async/IPC/Routine.pm
 lib/Async/IPC/Semaphore.pm
 lib/Async/IPC/Stream.pm
-t/01always_pass.t
 t/02pod.t
 t/03podcoverage.t
 t/05kwalitee.t

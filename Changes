@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - New Usul type names
           - Updated prereqs
           - Added EV as a dependency
           - Fixed tests on test server

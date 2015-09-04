@@ -62,5 +62,5 @@ Thumbs.db
 
 # Avoid archives of this distribution
 \bAsync-IPC-v?[\d\.\_]+
-\b*.log
-\b*.err
+t/.+\.log
+t/.+\.err
