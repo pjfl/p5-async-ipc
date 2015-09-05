@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - Should test for the definedness of file handles
           - Possible fix for undefined subroutine error on CI
           - Use sockets not pipes
           - Stream wraps before start not after

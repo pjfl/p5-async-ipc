@@ -431,7 +431,7 @@ has 'writer'                    => is => 'ro',   isa => CodeRef,
 sub BUILD {
    my $self = shift;
 
-   $self->read_handle and not $self->on_read
+   defined $self->read_handle and not $self->on_read
       and throw Unspecified, [ 'on_read' ];
    return;
 }
@@ -537,7 +537,8 @@ sub write {
       and log_error( $self, 'Cannot write to a closing stream' )
       and return;
 
-   my $handle = $self->write_handle or throw Unspecified, [ 'write handle' ];
+   my $handle = $self->write_handle; defined $handle
+      or throw Unspecified, [ 'write handle' ];
 
    my $encoder; not ref $data and $encoder = $self->encoder
        and $data = $encoder->encode( $data );
