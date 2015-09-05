@@ -14,10 +14,10 @@ extends q(Async::IPC::Base);
 my $_toggle_read_watcher = sub {
    my ($self, $want) = @_; defined $want or return; my $loop = $self->loop;
 
-   $self->read_handle or throw Unspecified, [ 'read handle' ];
+   defined $self->read_handle or throw Unspecified, [ 'read handle' ];
 
    if ($want and not $loop->watching_read_handle( $self->read_handle )) {
-      $self->on_read_ready or throw Unspecified, [ 'on read ready' ];
+      defined $self->on_read_ready or throw Unspecified, [ 'on read ready' ];
 
       my $cb = $self->capture_weakself( 'on_read_ready' );
 
@@ -31,10 +31,10 @@ my $_toggle_read_watcher = sub {
 my $_toggle_write_watcher = sub {
    my ($self, $want) = @_; defined $want or return; my $loop = $self->loop;
 
-   $self->write_handle or throw Unspecified, [ 'write handle' ];
+   defined $self->write_handle or throw Unspecified, [ 'write handle' ];
 
    if ($want and not $loop->watching_write_handle( $self->write_handle )) {
-      $self->on_write_ready or throw Unspecified, [ 'on write ready' ];
+      defined $self->on_write_ready or throw Unspecified, [ 'on write ready' ];
 
       my $cb = $self->capture_weakself( 'on_write_ready' );
 

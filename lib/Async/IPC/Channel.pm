@@ -4,8 +4,7 @@ use namespace::autoclean;
 
 use Async::IPC::Functions  qw( log_debug log_error read_error read_exactly );
 use Class::Usul::Constants qw( FALSE NUL TRUE );
-use Class::Usul::Functions qw( ensure_class_loaded nonblocking_write_pipe_pair
-                               throw );
+use Class::Usul::Functions qw( ensure_class_loaded socket_pair throw );
 use Class::Usul::Types     qw( ArrayRef CodeRef FileHandle Maybe Object );
 use English                qw( -no_match_vars );
 use Type::Utils            qw( enum );
@@ -158,7 +157,7 @@ has 'decode'       => is => 'lazy', isa => CodeRef, builder => $_build_decode;
 has 'encode'       => is => 'lazy', isa => CodeRef, builder => $_build_encode;
 
 has 'handle_pair'  => is => 'lazy', isa => ArrayRef,
-   builder         => sub { nonblocking_write_pipe_pair() };
+   builder         => sub { socket_pair() };
 
 has 'on_eof'       => is => 'ro',   isa => Maybe[CodeRef];
 

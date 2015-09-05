@@ -1,5 +1,8 @@
 Revision history for Async::IPC
 
+          - Possible fix for undefined subroutine error on CI
+          - Use sockets not pipes
+          - Stream wraps before start not after
           - New Usul type names
           - Updated prereqs
           - Added EV as a dependency

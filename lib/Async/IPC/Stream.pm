@@ -364,13 +364,13 @@ has 'on_read_low_watermark'     => is => 'ro',   isa => CodeRef,
    builder                      => sub {
       sub { $_[ 0 ]->want_readready_for_read( TRUE ) } };
 
-has '+on_read_ready'            => default => $_on_read_ready;
+has '+on_read_ready'            => builder => $_on_read_ready;
 
 has 'on_write_eof'              => is => 'ro',   isa => Maybe[CodeRef];
 
 has 'on_write_error'            => is => 'ro',   isa => Maybe[CodeRef];
 
-has '+on_write_ready'           => default => $_on_write_ready;
+has '+on_write_ready'           => builder => $_on_write_ready;
 
 has 'on_writeable_start'        => is => 'ro',   isa => Maybe[CodeRef];
 
@@ -436,7 +436,7 @@ sub BUILD {
    return;
 }
 
-after 'start' => sub {
+before 'start' => sub {
    my $self = shift;
 
    $self->$_is_empty or $self->want_writeready_for_write( TRUE );
