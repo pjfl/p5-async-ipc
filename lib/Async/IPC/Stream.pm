@@ -184,8 +184,8 @@ my $_flush_one_write = sub {
             return FALSE;
          }
 
-         my $data = $f->get;
-         my $encoder; not ref $data and $encoder = $self->encoder
+         my $data     = $f->get;
+         my $encoder  = $self->encoder; not ref $data and $encoder
             and $data = $encoder->encode( $data );
 
          $head->data = $data;
@@ -537,12 +537,11 @@ sub write {
       and log_error( $self, 'Cannot write to a closing stream' )
       and return;
 
-   my $handle = $self->write_handle; defined $handle
-      or throw Unspecified, [ 'write handle' ];
-
-   my $encoder; not ref $data and $encoder = $self->encoder
-       and $data = $encoder->encode( $data );
-
+   my $handle   = $self->write_handle; not defined $handle
+      and log_error( $self, "Stream: Attribute 'write_handle' undefined" )
+      and return;
+   my $encoder  = $self->encoder; not ref $data and $encoder
+      and $data = $encoder->encode( $data );
    my $on_write = delete $params{on_write};
    my $on_flush = delete $params{on_flush};
    my $on_error = delete $params{on_error};

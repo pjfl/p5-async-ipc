@@ -4,3 +4,6 @@ branches:
     - master
 before_install:
   - sudo apt-get install libev4
+env:
+  global:
+    - CLASS_USUL_DEBUG=1

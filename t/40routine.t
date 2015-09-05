@@ -7,11 +7,32 @@ use File::DataClass::IO;
 
 use_ok 'Async::IPC';
 
-my $prog     =  Class::Usul::Programs->new
-   (  config => { appclass => 'Class::Usul', tempdir => 't' }, noask => 1, );
-my $factory  =  Async::IPC->new( builder => $prog );
-my $loop     =  $factory->loop;
-my $log      =  $prog->log;
+my $prog;
+
+{  package TestLog;
+
+   use Moo;
+
+   sub log {
+      my ($self, $level, $msg) = @_;
+
+      $prog->debug and CORE::warn "[${level}]: ${msg}\n";
+      return 1;
+   }
+   sub debug { $_[ 0 ]->log( 'debug', $_[ 1 ] ) }
+   sub warn  { $_[ 0 ]->log( 'warn',  $_[ 1 ] ) }
+   sub info  { $_[ 0 ]->log( 'info',  $_[ 1 ] ) }
+   sub error { $_[ 0 ]->log( 'error', $_[ 1 ] ) }
+   sub alert { $_[ 0 ]->log( 'alert', $_[ 1 ] ) }
+   sub fatal { $_[ 0 ]->log( 'fatal', $_[ 1 ] ) }
+}
+
+$prog = Class::Usul::Programs->new
+   (  config    => { appclass => 'Class::Usul', tempdir => 't' },
+      log_class => 'TestLog',
+      noask     => 1, );
+my $factory = Async::IPC->new( builder => $prog );
+my $loop    = $factory->loop;
 
 $prog->config->logfile->exists and $prog->config->logfile->unlink;
 
@@ -85,12 +106,13 @@ $count = () = keys %{ $results };
 is $count, $max_calls, 'All async results present';
 undef $routine;
 
+done_testing;
+
 my $err = io [ 't', 'routine_test.err' ];
 
 $err->exists and not $prog->debug and $err->unlink;
-$prog->debug or $prog->config->logfile->unlink;
-
-done_testing;
+$err->exists and $prog->debug and warn $err->all;
+$prog->debug or  $prog->config->logfile->unlink;
 
 # Local Variables:
 # mode: perl

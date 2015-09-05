@@ -106,13 +106,11 @@ sub close {
 
    $self->_set_is_closing( TRUE ); $self->stop;
 
-   my $read_handle  = $self->read_handle;  $self->_set_read_handle ( undef );
-   my $write_handle = $self->write_handle; $self->_set_write_handle( undef );
-
-   defined $read_handle  and close $read_handle;
-   defined $write_handle and close $write_handle;
-
-   my $rv = $self->maybe_invoke_event( 'on_closed' );
+   my $read_handle  = $self->read_handle; defined $read_handle
+      and close $read_handle; $self->_set_read_handle ( undef );
+   my $write_handle = $self->write_handle; defined $write_handle
+      and close $write_handle; $self->_set_write_handle( undef );
+   my $rv           = $self->maybe_invoke_event( 'on_closed' );
 
    if ($self->close_futures) {
       $_->done for (@{ $self->close_futures });
@@ -138,8 +136,7 @@ sub new_close_future {
 sub set_handle {
    my ($self, $handle) = @_; $self->stop;
 
-   $self->_set_read_handle ( $handle );
-   $self->_set_write_handle( $handle );
+   $self->_set_read_handle ( $handle ); $self->_set_write_handle( $handle );
    $self->autostart and $self->start;
    return;
 }
@@ -154,25 +151,26 @@ sub set_handles {
 }
 
 sub start {
-   my $self = shift; my $started = FALSE;
+   my $self = shift; my $started = FALSE; $self->is_running and return;
 
-   $self->is_running and return; $self->_set_is_running( TRUE );
+   $self->_set_is_running( TRUE ); $self->_set_is_closing( FALSE );
 
    $self->read_handle  and $self->on_read_ready
       and $started = TRUE and $self->want_readready( TRUE );
    $self->write_handle and $self->on_write_ready
       and $started = TRUE and $self->want_writeready( TRUE );
-   $self->_set_is_closing( FALSE );
+
    return $started;
 }
 
 sub stop {
-   my $self = shift; my $stopped = FALSE;
+   my $self = shift; my $stopped = FALSE; $self->is_running or return;
 
-   $self->is_running or return; $self->_set_is_running( FALSE );
+   $self->_set_is_running( FALSE );
 
    $self->read_handle  and $stopped = TRUE and $self->want_readready( FALSE );
    $self->write_handle and $stopped = TRUE and $self->want_writeready( FALSE );
+
    return $stopped;
 }
 

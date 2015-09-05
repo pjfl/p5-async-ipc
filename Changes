@@ -1,5 +1,7 @@
 Revision history for Async::IPC
 
+          - Turned on debug output during testing
+          - Should not throw in a callback
           - Should test for the definedness of file handles
           - Possible fix for undefined subroutine error on CI
           - Use sockets not pipes
