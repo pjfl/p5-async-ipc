@@ -168,7 +168,7 @@ my $_flush_one_write = sub {
             return TRUE;
          }
 
-         my $encoder; not ref $data and $encoder = $self->encoder
+         my $encoder = $self->encoder; not ref $data and $encoder
             and $data = $encoder->encode( $data );
 
          unshift @{ $writequeue }, Async::IPC::Writer->new
@@ -202,7 +202,7 @@ my $_flush_one_write = sub {
 
    defined $wrote or return $self->$_handle_write_error( $head, $ERRNO );
 
-   log_debug $self, "Wrote ${wrote} bytes";
+   log_debug $self, "Wrote ${wrote} bytes. Head length ".(length $head->data);
    $head->on_write and $head->on_write->( $self, $wrote );
 
    unless (length $head->data) {
@@ -791,7 +791,7 @@ Peter Flanigan, C<< <pjfl@cpan.org> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2015 Peter Flanigan. All rights reserved
+Copyright (c) 2016 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

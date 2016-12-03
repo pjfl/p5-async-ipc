@@ -3,6 +3,7 @@ package Async::IPC::Semaphore;
 use namespace::autoclean;
 
 use Class::Usul::Constants qw( TRUE );
+use English                qw( -no_match_vars );
 use Scalar::Util           qw( refaddr );
 use Moo;
 
@@ -14,7 +15,7 @@ around 'BUILDARGS' => sub {
 
    my $lock = $attr->{builder}->lock;
    my $code = $attr->{on_recv}->[ 0 ]; $attr->{on_recv}->[ 0 ] = sub {
-      $lock->reset( k => $_[ 1 ] ); $code->( @_ );
+      $lock->reset( k => $_[ 1 ], p => $_[ 2 ] ); $code->( @_ );
    };
 
    return $attr;
@@ -32,7 +33,8 @@ sub DEMOLISH {
 sub raise {
    my $self = shift; $self->is_running or return; my $key = refaddr $self;
 
-   $self->lock->set( k => $key, async => TRUE ) and return $self->call( $key );
+   $self->lock->set( k => $key, async => TRUE )
+      and return $self->call( $key, $PID );
 
    return TRUE;
 }
@@ -120,7 +122,7 @@ Peter Flanigan, C<< <pjfl@cpan.org> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2015 Peter Flanigan. All rights reserved
+Copyright (c) 2016 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>
