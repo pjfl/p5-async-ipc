@@ -1,13 +1,15 @@
 use t::boilerplate;
 
 use Test::More;
-use Class::Usul::Programs;
 use English qw( -no_match_vars );
 
-use_ok 'Async::IPC';
+use Class::Usul::Programs;
 
 my $prog     =  Class::Usul::Programs->new
    (  config => { appclass => 'Class::Usul', tempdir => 't' }, noask => 1, );
+
+use_ok 'Async::IPC';
+
 my $factory  =  Async::IPC->new( builder => $prog );
 my $loop     =  $factory->loop;
 my $log      =  $prog->log;

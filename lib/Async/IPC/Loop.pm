@@ -4,75 +4,81 @@ use strictures;
 
 use AnyEvent;
 use Async::Interrupt;
-use Class::Usul::Functions qw( arg_list is_member );
-use English                qw( -no_match_vars );
-use Scalar::Util           qw( blessed weaken );
+use Async::IPC::Functions qw( to_hashref );
+use English               qw( -no_match_vars );
+use List::Util            qw( any );
+use Scalar::Util          qw( blessed weaken );
 
 my $Cache = {}; my $UUID = 1;
 
-# Private methods
-my $_events = sub { # Do not share state between forks
-   return $Cache->{ $PID }->{ $_[ 1 ] } ||= {};
-};
-
-my $_log = sub {
-   return $_[ 0 ]->{builder}->log;
-};
-
-my $_sigattaches = sub {
-   return $Cache->{ $PID }->{ 'sigattaches' } ||= {};
-};
-
 # Construction
 sub new {
-   my $self = shift; return bless arg_list( @_ ), blessed $self || $self;
+   my ($self, @args) = @_;
+
+   return bless to_hashref(@args), blessed $self || $self;
 }
 
 # Public methods
 sub once {
-   my ($self, $tmout, $cb) = @_; $cb //= sub {};
+   my ($self, $tmout, $cb) = @_;
 
-   defined $tmout and my $w = AnyEvent->timer( after => $tmout, cb => $cb );
+   $cb //= sub {};
+
+   my $w = AnyEvent->timer(after => $tmout, cb => $cb) if defined $tmout;
+
    AnyEvent->_poll; # Undocumented method
    return;
 }
 
 sub start {
-   my $self = shift; my $cv = $self->$_events( 'condvars' );
+   my $self = shift;
+   my $cv   = $self->_events('condvars');
 
    return (local $cv->{state} = AnyEvent->condvar)->recv;
 }
 
 sub start_nb {
-   my ($self, $cb) = @_; my $cv = $self->$_events( 'condvars' );
+   my ($self, $cb) = @_;
 
-   (local $cv->{state} = AnyEvent->condvar)->cb( sub {
-      my @res = $_[ 0 ]->recv; defined $cb and $cb->( @res ) } );
+   my $cv = $self->_events('condvars');
+
+   (local $cv->{state} = AnyEvent->condvar)->cb(sub {
+      my $self = shift;
+      my @res  = $self->recv;
+
+      $cb->(@res) if defined $cb;
+   });
 
    return;
 }
 
 sub stop {
-   my ($self, @args) = @_; my $cv = $self->$_events( 'condvars' );
+   my ($self, @args) = @_;
 
-   exists $cv->{state} and defined $cv->{state} and $cv->{state}->send( @args );
+   my $cv = $self->_events('condvars');
+
+   $cv->{state}->send(@args) if exists $cv->{state} && defined $cv->{state};
 
    return;
 }
 
 sub watch_child {
-   my ($self, $id, $cb) = @_; my $w = $self->$_events( 'watchers' );
+   my ($self, $id, $cb) = @_;
+
+   my $w = $self->_events('watchers');
 
    if ($id) {
-      my $cv = $w->{ $id }->[ 0 ] = AnyEvent->condvar;
+      my $cv = $w->{$id}->[0] = AnyEvent->condvar;
 
-      $w->{ $id }->[ 1 ] = AnyEvent->child( pid => $id, cb => sub {
-         defined $cb and $cb->( @_ ); $cv->send } );
+      $w->{$id}->[1] = AnyEvent->child(pid => $id, cb => sub {
+         $cb->(@_) if defined $cb;
+         $cv->send;
+      });
    }
    else {
-      for (sort { $a <=> $b } $cb ? $cb->() : keys %{ $w }) {
-         $w->{ $_ } and $w->{ $_ }->[ 0 ] and $w->{ $_ }->[ 0 ]->recv;
-         $self->unwatch_child( $_ );
+      for (sort { $a <=> $b } $cb ? $cb->() : keys %{$w}) {
+         $w->{$_}->[0]->recv if $w->{$_} && $w->{$_}->[0];
+         $self->unwatch_child($_);
       }
    }
 
@@ -80,154 +86,218 @@ sub watch_child {
 }
 
 sub watching_child {
-   my ($self, $id) = @_; my $w = $self->$_events( 'watchers' );
+   my ($self, $id) = @_;
 
-   return ((exists $w->{ $id }) && (defined $w->{ $id })) ? 1 : 0;
+   my $w = $self->_events('watchers');
+
+   return ((exists $w->{$id}) && (defined $w->{$id})) ? 1 : 0;
 }
 
 sub unwatch_child {
-   my $w = $_[ 0 ]->$_events( 'watchers' ); my $id = $_[ 1 ];
+   my ($self, $id) = @_;
 
-   undef $w->{ $id }->[ 0 ]; undef $w->{ $id }->[ 1 ]; delete $w->{ $id };
+   my $w = $self->_events('watchers');
+
+   undef $w->{$id}->[0];
+   undef $w->{$id}->[1];
+   delete $w->{$id};
    return;
 }
 
 sub watch_idle {
-   my ($self, $id, $cb) = @_; my $i = $self->$_events( 'idle' );
+   my ($self, $id, $cb) = @_;
 
-   $i->{ $id } = AnyEvent->idle( cb => sub {
-      delete $i->{ $id }; $cb->( @_ ) } );
+   my $i = $self->_events('idle');
+
+   $i->{$id} = AnyEvent->idle(cb => sub {
+      delete $i->{$id};
+      $cb->(@_);
+   });
+
    return;
 }
 
 sub watching_idle {
-   my ($self, $id) = @_; my $i = $self->$_events( 'idle' );
+   my ($self, $id) = @_;
 
-   return ((exists $i->{ $id }) && (defined $i->{ $id })) ? 1 : 0;
+   my $i = $self->_events('idle');
+
+   return ((exists $i->{$id}) && (defined $i->{$id})) ? 1 : 0;
 }
 
 sub unwatch_idle {
-   delete $_[ 0 ]->$_events( 'idle' )->{ $_[ 1 ] }; return;
+   my ($self, $id) = @_;
+
+   delete $self->_events('idle')->{$id};
+   return;
 }
 
 sub watch_read_handle {
-   my ($self, $fh, $cb) = @_; my $h = $self->$_events( 'handles' );
+   my ($self, $fh, $cb) = @_;
 
-   $h->{ "r${fh}" } = AnyEvent->io( cb => $cb, fh => $fh, poll => 'r' );
+   my $h = $self->_events('handles');
+
+   $h->{"r${fh}"} = AnyEvent->io(cb => $cb, fh => $fh, poll => 'r');
    return;
 }
 
 sub watching_read_handle {
-   my ($self, $fh) = @_; my $h = $self->$_events( 'handles' );
+   my ($self, $fh) = @_;
 
-   return ((exists $h->{ "r${fh}" }) && (defined $h->{ "r${fh}" })) ? 1 : 0;
+   my $h = $self->_events('handles');
+
+   return ((exists $h->{"r${fh}"}) && (defined $h->{"r${fh}"})) ? 1 : 0;
 }
 
 sub unwatch_read_handle {
-   delete $_[ 0 ]->$_events( 'handles' )->{ 'r'.$_[ 1 ] }; return;
+   my ($self, $fh) = @_;
+
+   delete $self->_events('handles')->{"r${fh}"};
+   return;
 }
 
 sub watch_signal {
    my ($self, $signal, $cb) = @_;
 
-   my $attaches; my $loop = $self; weaken( $loop );
+   my $loop = $self; weaken( $loop );
+   my $attaches;
 
-   unless ($attaches = $self->$_sigattaches->{ $signal }) {
-      my $s = $self->$_events( 'signals' );
+   unless ($attaches = $self->_sigattaches->{$signal}) {
+      my $s = $self->_events('signals');
 
-      $s->{ $signal } = AnyEvent->signal( signal => $signal, cb => sub {
-         my @attaches = @{ $loop->$_sigattaches->{ $signal } // [] };
+      $s->{$signal} = AnyEvent->signal(signal => $signal, cb => sub {
+         my @attaches = @{$loop->_sigattaches->{$signal} // [] };
 
          for my $attachment (@attaches) { $attachment->() }
-      } );
+      });
 
-      $attaches = $self->$_sigattaches->{ $signal } = [];
+      $attaches = $self->_sigattaches->{$signal} = [];
    }
 
-   push @{ $attaches }, $cb; return \$attaches->[ -1 ];
+   push @{$attaches}, $cb;
+   return \$attaches->[-1];
 }
 
 sub watching_signal {
-   my ($self, $signal, $id) = @_; my $s = $self->$_events( 'signals' );
+   my ($self, $signal, $id) = @_;
 
-   my $watching = (exists $s->{ $signal }) && (defined $s->{ $signal });
+   my $s = $self->_events('signals');
+   my $watching = (exists $s->{$signal}) && (defined $s->{$signal});
 
-   (not $watching or not defined $id) and return $watching ? 1 : 0;
+   return $watching ? 1 : 0 if !$watching || !defined $id;
 
-   return is_member $id, map { \$_ } @{ $self->$_sigattaches->{ $signal } };
+   return any { $_ == $id }, map { \$_ } @{$self->_sigattaches->{$signal}};
 }
 
 sub unwatch_signal {
    my ($self, $signal, $id) = @_;
 
    # Can't use grep because we have to preserve the addresses
-   my $attaches = $self->$_sigattaches->{ $signal } or return;
+   my $attaches = $self->_sigattaches->{$signal} or return;
 
-   for (my $i = 0; $i < @{ $attaches }; ) {
-      not $id and splice @{ $attaches }, $i, 1, () and next;
-      $id == \$attaches->[ $i ] and splice @{ $attaches }, $i, 1, () and last;
+   for (my $i = 0; $i < @{$attaches}; ) {
+      next if !$id && splice @{$attaches}, $i, 1, ();
+
+      last if ($id == \$attaches->[$i]) && splice @{$attaches}, $i, 1, ();
+
       $i++;
    }
 
-   scalar @{ $attaches } and return;
-   delete $self->$_sigattaches->{ $signal };
-   delete $self->$_events( 'signals' )->{ $signal };
+   return if scalar @{$attaches};
+
+   delete $self->_sigattaches->{$signal};
+   delete $self->_events('signals')->{$signal};
    return;
 }
 
 sub watch_time {
    my ($self, $id, $cb, $after, $interval) = @_;
 
-   defined $interval and $interval eq 'abs' and $after -= AnyEvent->now;
-   defined $interval and $interval =~ m{ \A (?: abs | rel ) \z }mx
-       and $interval = 0;
+   if (defined $interval) {
+      $after -= AnyEvent->now if $interval eq 'abs';
 
-   $after > 0 or $after = 0; my @args = (after => $after, cb => $cb);
+      $interval = 0 if $interval =~ m{ \A (?: abs | rel ) \z }mx;
+   }
 
-   not defined $interval and push @args, 'interval', $after;
-       defined $interval and $interval and push @args, 'interval', $interval;
+   $after = 0 unless $after > 0;
 
-   my $t = $self->$_events( 'timers' ); $t->{ $id }->[ 0 ] = $cb;
+   my @args = (after => $after, cb => $cb);
 
-   $t->{ $id }->[ 1 ] = AnyEvent->timer( @args );
+   push @args, 'interval', $after unless defined $interval;
+
+   push @args, 'interval', $interval if $interval;
+
+   my $t = $self->_events('timers');
+
+   $t->{$id}->[0] = $cb; # So that unwatch_time can return the cb
+   $t->{$id}->[1] = AnyEvent->timer(@args);
    return;
 }
 
 sub watching_time {
-   my ($self, $id) = @_; my $t = $self->$_events( 'timers' );
+   my ($self, $id) = @_;
 
-   return ((exists $t->{ $id }) && (defined $t->{ $id })) ? 1 : 0;
+   my $t = $self->_events('timers');
+
+   return ((exists $t->{$id}) && (defined $t->{$id})) ? 1 : 0;
 }
 
 sub unwatch_time {
-   my ($self, $id) = @_; my $t = $self->$_events( 'timers' );
+   my ($self, $id) = @_;
 
-   exists $t->{ $id } or return 0; my $cb = $t->{ $id }->[ 0 ];
+   my $t = $self->_events('timers');
 
-   undef $t->{ $id }->[ 0 ]; undef $t->{ $id }->[ 1 ]; delete $t->{ $id };
+   return 0 unless exists $t->{$id};
+
+   my $cb = $t->{$id}->[0];
+
+   undef $t->{$id}->[0];
+   undef $t->{$id}->[1];
+   delete $t->{$id};
 
    return $cb;
 }
 
 sub watch_write_handle {
-   my ($self, $fh, $cb) = @_; my $h = $self->$_events( 'handles' );
+   my ($self, $fh, $cb) = @_;
 
-   $h->{ "w${fh}" } = AnyEvent->io( cb => $cb, fh => $fh, poll => 'w' );
+   my $h = $self->_events('handles');
+
+   $h->{"w${fh}"} = AnyEvent->io(cb => $cb, fh => $fh, poll => 'w');
+
    return;
 }
 
 sub watching_write_handle {
-   my ($self, $fh) = @_; my $h = $self->$_events( 'handles' );
+   my ($self, $fh) = @_;
 
-   return ((exists $h->{ "w${fh}" }) && (defined $h->{ "w${fh}" })) ? 1 : 0;
+   my $h = $self->_events('handles');
+
+   return ((exists $h->{"w${fh}"}) && (defined $h->{"w${fh}"})) ? 1 : 0;
 }
 
 sub unwatch_write_handle {
-   delete $_[ 0 ]->$_events( 'handles' )->{ 'w'.$_[ 1 ] }; return;
+   my ($self, $fh) = @_;
+
+   delete $self->_events('handles')->{"w${fh}"};
+   return;
 }
 
 sub uuid {
    return $UUID++;
+}
+
+# Private methods
+sub _events { # Do not share state between forks
+   return $Cache->{$PID}->{$_[1]} ||= {};
+}
+
+sub  _log {
+   return $_[0]->{builder}->log;
+}
+
+sub _sigattaches {
+   return $Cache->{$PID}->{'sigattaches'} ||= {};
 }
 
 1;

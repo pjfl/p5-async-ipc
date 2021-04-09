@@ -2,39 +2,47 @@ package Async::IPC::Semaphore;
 
 use namespace::autoclean;
 
-use Class::Usul::Constants qw( TRUE );
-use English                qw( -no_match_vars );
-use Scalar::Util           qw( refaddr );
+use Async::IPC::Constants qw( TRUE );
+use English               qw( -no_match_vars );
+use Scalar::Util          qw( refaddr );
 use Moo;
 
 extends q(Async::IPC::Routine);
 
 # Construction
 around 'BUILDARGS' => sub {
-   my ($orig, $self, @args) = @_; my $attr = $orig->( $self, @args );
+   my ($orig, $self, @args) = @_;
 
+   my $attr = $orig->($self, @args);
    my $lock = $attr->{builder}->lock;
-   my $code = $attr->{on_recv}->[ 0 ]; $attr->{on_recv}->[ 0 ] = sub {
-      $lock->reset( k => $_[ 1 ], p => $_[ 2 ] ); $code->( @_ );
+   my $code = $attr->{on_recv}->[0];
+
+   $attr->{on_recv}->[0] = sub {
+      $lock->reset(k => $_[1], p => $_[2]); $code->(@_);
    };
 
    return $attr;
 };
 
 sub DEMOLISH {
-   my ($self, $gd) = @_; $gd and return;
+   my ($self, $gd) = @_;
 
-   eval { $self->lock->reset( k => refaddr $self ) };
+   return if $gd;
+
+   eval { $self->lock->reset(k => refaddr $self) };
 
    return;
 }
 
 # Public methods
 sub raise {
-   my $self = shift; $self->is_running or return; my $key = refaddr $self;
+   my $self = shift;
 
-   $self->lock->set( k => $key, async => TRUE )
-      and return $self->call( $key, $PID );
+   return unless $self->is_running;
+
+   my $key = refaddr $self;
+
+   return $self->call($key, $PID) if $self->lock->set(k => $key, async => TRUE);
 
    return TRUE;
 }

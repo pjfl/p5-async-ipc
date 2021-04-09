@@ -2,71 +2,19 @@ package Async::IPC::FileStream;
 
 use namespace::autoclean;
 
+use Async::IPC::Constants qw( FALSE NUL TRUE );
+use Async::IPC::Functions qw( log_debug throw );
+use Async::IPC::Types     qw( Bool CodeRef HashRef Maybe Object PositiveInt );
+use Fcntl                 qw( :seek );
+use Scalar::Util          qw( blessed );
 use Moo;
-use Async::IPC::Functions  qw( log_debug );
-use Class::Usul::Constants qw( FALSE NUL TRUE );
-use Class::Usul::Functions qw( throw );
-use Class::Usul::Types     qw( Bool CodeRef HashRef Maybe Object PositiveInt );
-use Fcntl                  qw( :seek );
-use Scalar::Util           qw( blessed );
 
 extends qw(Async::IPC::Stream);
-
-my $_build_file = sub {
-   my $self = shift; return $self->factory->new_notifier
-      ( type              => 'file',
-        description       => $self->description.' file',
-        name              => $self->name.'_file',
-        on_devino_changed => $self->replace_weakself( 'on_devino_changed' ),
-        on_size_changed   => $self->replace_weakself( 'on_size_changed' ),
-        %{ $self->file_attr }, );
-};
-
-my $_build_on_devino_changed = sub {
-   return sub {
-      my $self = shift or return; log_debug $self, 'Device inode changed';
-
-      $self->_set_renamed( TRUE ); $self->read_more;
-
-      return;
-   };
-};
-
-my $_build_on_size_changed = sub {
-   return sub {
-      my $self = shift or return; my ($old_size, $new_size) = @_;
-
-      if ($new_size < $self->last_size) {
-         $self->maybe_invoke_event( 'on_truncated' ); $self->_set_last_pos( 0 );
-      }
-
-      log_debug $self, "File size ${new_size} bytes";
-      $self->_set_last_size( $new_size );
-      $self->read_more;
-      return;
-   };
-};
-
-my $_toggle_read_watcher = sub {
-   my ($self, $want) = @_;
-
-   if ($want) { $self->file->start } else { $self->file->stop }
-
-   return;
-};
-
-my $_toggle_write_watcher = sub {
-   my ($self, $want) = @_;
-
-   $want and throw 'Class [_1] cannot watch write', [ blessed $self || $self ];
-
-   return;
-};
 
 has '+close_on_read_eof' => default => FALSE;
 
 has 'file'               => is => 'lazy', isa => Object,
-   builder               => $_build_file;
+   builder               => '_build_file';
 
 has 'file_attr'          => is => 'ro',   isa => HashRef, builder => sub { {} };
 
@@ -75,12 +23,12 @@ has 'last_pos'           => is => 'rwp',  isa => Maybe[PositiveInt];
 has 'last_size'          => is => 'rwp',  isa => Maybe[PositiveInt];
 
 has 'on_devino_changed'  => is => 'ro',   isa => CodeRef,
-   builder               => $_build_on_devino_changed;
+   builder               => '_build_on_devino_changed';
 
 has 'on_initial'         => is => 'ro',   isa => Maybe[CodeRef];
 
 has 'on_size_changed'    => is => 'ro',   isa => CodeRef,
-   builder               => $_build_on_size_changed;
+   builder               => '_build_on_size_changed';
 
 has 'on_truncated'       => is => 'ro',   isa => Maybe[CodeRef];
 
@@ -88,17 +36,20 @@ has 'renamed'            => is => 'rwp',  isa => Bool, default => FALSE;
 
 has 'running_initial'    => is => 'rwp',  isa => Bool, default => TRUE;
 
-has '+want_readready'    => trigger => $_toggle_read_watcher;
+has '+want_readready'    => trigger => \&_toggle_read_watcher;
 
-has '+want_writeready'   => trigger => $_toggle_write_watcher;
+has '+want_writeready'   => trigger => \&_toggle_write_watcher;
 
 around 'BUILDARGS' => sub {
-   my ($orig, $self, @args) = @_; my $attr = $orig->( $self, @args );
+   my ($orig, $self, @args) = @_;
 
+   my $attr = $orig->($self, @args);
    my $args = { autostart => FALSE };
 
    for my $k (qw( interval path )) {
-      my $v = delete $attr->{ $k }; defined $v and $args->{ $k } = $v;
+      my $v = delete $attr->{$k};
+
+      $args->{$k} = $v if defined $v;
    }
 
    $args->{handle   } = $attr->{read_handle};
@@ -109,88 +60,157 @@ around 'BUILDARGS' => sub {
 sub BUILD {
    my $self = shift;
 
-   $self->_set_last_size( my $size = $self->file->path->stat->{size} );
-   $self->maybe_invoke_event( 'on_initial', $size );
-   $self->_set_running_initial( FALSE );
+   $self->_set_last_size(my $size = $self->file->path->stat->{size});
+   $self->maybe_invoke_event('on_initial', $size);
+   $self->_set_running_initial(FALSE);
    return;
 }
 
 sub read_more {
-   my $self = shift; my $path = $self->file->path;
+   my $self = shift;
+   my $path = $self->file->path;
 
-   defined $self->last_pos and $path->seek( $self->last_pos, SEEK_SET );
+   $path->seek($self->last_pos, SEEK_SET) if defined $self->last_pos;
 
-   $self->invoke_event( 'on_read_ready' );
-   $self->_set_last_pos( $path->tell );
+   $self->invoke_event('on_read_ready');
+   $self->_set_last_pos($path->tell);
 
    if ($self->last_pos < $self->last_size) {
-      $self->loop->watch_idle( $self->pid, sub { $self->read_more } );
+      $self->loop->watch_idle($self->pid, sub { $self->read_more });
    }
    elsif ($self->renamed) {
-      $self->_set_last_size( 0 ); log_debug $self, 'Reopening for rename';
+      $self->_set_last_size(0);
+
+      log_debug $self, 'Reopening for rename';
 
       if ($self->last_pos) {
-         $self->maybe_invoke_event( 'on_truncated' );
-         $self->_set_last_pos( 0 );
-         $self->loop->watch_idle( $self->pid, sub { $self->read_more } );
+         $self->maybe_invoke_event('on_truncated');
+         $self->_set_last_pos(0);
+         $self->loop->watch_idle($self->pid, sub { $self->read_more });
       }
 
-      $path->close; $path->assert_open; $self->_set_renamed( FALSE );
+      $path->close;
+      $path->assert_open;
+      $self->_set_renamed(FALSE);
    }
 
    return;
 }
 
 sub seek {
-   my ($self, $offset, $whence) = @_; my $path = $self->file->path;
+   my ($self, $offset, $whence) = @_;
 
-   $self->running_initial or throw 'Cannot seek except during on_initial';
+   throw 'Cannot seek except during on_initial' unless $self->running_initial;
 
-   $path->seek( $offset, $whence // SEEK_SET );
+   $self->file->path->seek($offset, $whence // SEEK_SET);
+
    return;
 }
 
 sub seek_to_last {
    my ($self, $str_pattern, %opts) = @_;
 
-   $self->running_initial
-      or throw 'Cannot seek_to_last except during on_initial';
+   throw 'Cannot seek_to_last except during on_initial'
+      unless $self->running_initial;
 
-   my $offset  = $self->last_size; my $blocksize = $opts{blocksize} // 8_192;
+   my $offset    = $self->last_size;
+   my $blocksize = $opts{blocksize} // 8_192;
 
-   defined $opts{horizon} or $opts{horizon} = 4 * $blocksize;
+   $opts{horizon} = 4 * $blocksize unless defined $opts{horizon};
 
    my $horizon = $opts{horizon} ? $offset - $opts{horizon} : 0;
 
-   $horizon < 0 and $horizon = 0;
+   $horizon = 0 if $horizon < 0;
 
-   my $prev = NUL; my $path = $self->file->path->block_size( $blocksize );
-
+   my $prev = NUL;
+   my $path = $self->file->path->block_size($blocksize);
    my $re   = ref $str_pattern ? $str_pattern : qr{ \Q$str_pattern\E }mx;
 
    while ($offset > $horizon) {
       my $len = $blocksize;
 
-      $len > $offset and $len = $offset; $offset -= $len;
+      $len = $offset if $len > $offset;
 
-      $path->clear->seek( $offset, SEEK_SET )->read;
+      $offset -= $len;
+      $path->clear->seek($offset, SEEK_SET)->read;
 
       # TODO: If $str_pattern is a plain string this could be more efficient
       # using rindex
-      if (() = (${ $path->buffer }.$prev) =~ m{ $re }gmsx ) {
+      if (() = (${$path->buffer}.$prev) =~ m{ $re }gmsx ) {
          # $+[0] will be end of last match
-         my $pos = $offset + $+[ 0 ]; $self->seek( $pos ); return TRUE;
+         my $pos = $offset + $+[0];
+         $self->seek($pos);
+         return TRUE;
       }
 
-      $prev = ${ $path->buffer };
+      $prev = ${$path->buffer};
    }
 
-   $self->seek( $horizon );
+   $self->seek($horizon);
    return FALSE;
 }
 
 sub write {
-   throw 'Class [_1] cannot call write method', [ blessed $_[ 0 ] || $_[ 0 ] ];
+   my $self = shift;
+
+   throw 'Class [_1] cannot call write method', [ blessed $self || $self ];
+}
+
+# Private methods
+sub _build_file {
+   my $self = shift;
+
+   return $self->factory->new_notifier(
+      type              => 'file',
+      description       => $self->description.' file',
+      name              => $self->name.'_file',
+      on_devino_changed => $self->replace_weakself('on_devino_changed'),
+      on_size_changed   => $self->replace_weakself('on_size_changed'),
+      %{$self->file_attr},
+   );
+}
+
+sub _build_on_devino_changed {
+   return sub {
+      my $self = shift or return;
+
+      log_debug $self, 'Device inode changed';
+      $self->_set_renamed(TRUE);
+      $self->read_more;
+      return;
+   };
+}
+
+sub _build_on_size_changed {
+   return sub {
+      my $self = shift or return; my ($old_size, $new_size) = @_;
+
+      if ($new_size < $self->last_size) {
+         $self->maybe_invoke_event('on_truncated');
+         $self->_set_last_pos(0);
+      }
+
+      log_debug $self, "File size ${new_size} bytes";
+      $self->_set_last_size($new_size);
+      $self->read_more;
+      return;
+   };
+}
+
+sub _toggle_read_watcher {
+   my ($self, $want) = @_;
+
+   if ($want) { $self->file->start } else { $self->file->stop }
+
+   return;
+}
+
+sub _toggle_write_watcher {
+   my ($self, $want) = @_;
+
+   throw 'Class [_1] cannot watch write', [ blessed $self || $self ] if $want;
+
+   return;
 }
 
 1;

@@ -2,48 +2,14 @@ package Async::IPC::Handle;
 
 use namespace::autoclean;
 
-use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE TRUE );
-use Class::Usul::Functions qw( throw );
-use Class::Usul::Types     qw( ArrayRef Bool CodeRef FileHandle Maybe Object );
+use Async::IPC::Constants qw( EXCEPTION_CLASS FALSE TRUE );
+use Async::IPC::Functions qw( throw );
+use Async::IPC::Types     qw( ArrayRef Bool CodeRef FileHandle Maybe Object );
 use IO::Handle;
-use Unexpected::Functions  qw( Unspecified );
+use Unexpected::Functions qw( Unspecified );
 use Moo;
 
 extends q(Async::IPC::Base);
-
-my $_toggle_read_watcher = sub {
-   my ($self, $want) = @_; defined $want or return; my $loop = $self->loop;
-
-   defined $self->read_handle or throw Unspecified, [ 'read handle' ];
-
-   if ($want and not $loop->watching_read_handle( $self->read_handle )) {
-      defined $self->on_read_ready or throw Unspecified, [ 'on read ready' ];
-
-      my $cb = $self->capture_weakself( 'on_read_ready' );
-
-      $loop->watch_read_handle( $self->read_handle, $cb );
-   }
-   else { $loop->unwatch_read_handle( $self->read_handle ) }
-
-   return;
-};
-
-my $_toggle_write_watcher = sub {
-   my ($self, $want) = @_; defined $want or return; my $loop = $self->loop;
-
-   defined $self->write_handle or throw Unspecified, [ 'write handle' ];
-
-   if ($want and not $loop->watching_write_handle( $self->write_handle )) {
-      defined $self->on_write_ready or throw Unspecified, [ 'on write ready' ];
-
-      my $cb = $self->capture_weakself( 'on_write_ready' );
-
-      $loop->watch_write_handle( $self->write_handle, $cb );
-   }
-   else { $loop->unwatch_write_handle( $self->write_handle ) }
-
-   return;
-};
 
 has 'close_futures'   => is => 'ro',   isa => ArrayRef[Object],
    builder            => sub { [] };
@@ -61,59 +27,81 @@ has 'on_write_ready'  => is => 'lazy', isa => Maybe[CodeRef];
 has 'read_handle'     => is => 'rwp',  isa => Maybe[FileHandle];
 
 has 'want_readready'  => is => 'rw',   isa => Bool, default => FALSE,
-   trigger            => $_toggle_read_watcher;
+   trigger            => \&_toggle_read_watcher;
 
 has 'want_writeready' => is => 'rw',   isa => Bool, default => FALSE,
-   trigger            => $_toggle_write_watcher;
+   trigger            => \&_toggle_write_watcher;
 
 has 'write_handle'    => is => 'rwp',  isa => Maybe[FileHandle];
 
 # Construction
 around 'BUILDARGS' => sub {
-   my ($orig, $self, @args) = @_; my $attr = $orig->( $self, @args );
+   my ($orig, $self, @args) = @_;
 
+   my $attr         = $orig->($self, @args);
    my $read_fileno  = delete $attr->{read_fileno};
    my $write_fileno = delete $attr->{write_fileno};
 
-   if (defined $read_fileno and defined $write_fileno
-       and $read_fileno == $write_fileno) {
-      $attr->{handle} = IO::Handle->new_from_fd( $read_fileno, 'r+' );
+   if (defined $read_fileno && defined $write_fileno
+       && $read_fileno == $write_fileno) {
+      $attr->{handle} = IO::Handle->new_from_fd($read_fileno, 'r+');
    }
    else {
-      defined $read_fileno  and
-         $attr->{read_handle } = IO::Handle->new_from_fd( $read_fileno,  'r' );
-      defined $write_fileno and
-         $attr->{write_handle} = IO::Handle->new_from_fd( $write_fileno, 'w' );
+      $attr->{read_handle } = IO::Handle->new_from_fd($read_fileno,  'r')
+         if defined $read_fileno;
+      $attr->{write_handle} = IO::Handle->new_from_fd($write_fileno, 'w')
+         if defined $write_fileno;
    }
 
-   my $handle = delete $attr->{handle}; defined $handle
-      and $attr->{read_handle} = $attr->{write_handle} = $handle;
+   my $handle = delete $attr->{handle};
+
+   $attr->{read_handle} = $attr->{write_handle} = $handle if defined $handle;
 
    return $attr;
 };
 
 sub BUILD {
-   my $self = shift; $self->autostart and $self->start; return;
+   my $self = shift;
+
+   $self->start if $self->autostart;
+
+   return;
 }
 
 sub DEMOLISH {
-   my ($self, $gd) = @_; $gd and return; $self->close; return;
+   my ($self, $gd) = @_;
+
+   return if $gd;
+
+   $self->close;
+   return;
 }
 
 # Public methods
 sub close {
-   my $self = shift; $self->is_closing and return TRUE;
+   my $self = shift;
 
-   $self->_set_is_closing( TRUE ); $self->stop;
+   return TRUE if $self->is_closing;
 
-   my $read_handle  = $self->read_handle; defined $read_handle
-      and close $read_handle; $self->_set_read_handle ( undef );
-   my $write_handle = $self->write_handle; defined $write_handle
-      and close $write_handle; $self->_set_write_handle( undef );
-   my $rv           = $self->maybe_invoke_event( 'on_closed' );
+   $self->_set_is_closing(TRUE);
+   $self->stop;
+
+   my $read_handle = $self->read_handle;
+
+   close $read_handle if defined $read_handle;
+
+   $self->_set_read_handle(undef);
+
+   my $write_handle = $self->write_handle;
+
+   close $write_handle if defined $write_handle;
+
+   $self->_set_write_handle(undef);
+
+   my $rv = $self->maybe_invoke_event('on_closed');
 
    if ($self->close_futures) {
-      $_->done for (@{ $self->close_futures });
+      $_->done for (@{$self->close_futures});
    }
 
    return (defined $rv) ? $rv : TRUE;
@@ -122,56 +110,126 @@ sub close {
 sub new_close_future {
    my $self = shift;
 
-   push @{ $self->close_futures }, my $future = $self->factory->new_future;
+   push @{$self->close_futures}, my $future = $self->factory->new_future;
 
-   $future->on_cancel( $self->capture_weakself( sub {
-      my ($self, $f) = @_; $self or return;
+   $future->on_cancel($self->capture_weakself(sub {
+      my ($self, $f) = @_;
 
-      @{ $self->close_futures } = grep { $_ != $f } @{ $self->close_futures };
-   } ) );
+      return unless $self;
+
+      @{$self->close_futures} = grep { $_ != $f } @{$self->close_futures};
+   }));
 
    return $future;
 }
 
 sub set_handle {
-   my ($self, $handle) = @_; $self->stop;
+   my ($self, $handle) = @_;
 
-   $self->_set_read_handle ( $handle ); $self->_set_write_handle( $handle );
-   $self->autostart and $self->start;
+   $self->stop;
+   $self->_set_read_handle($handle);
+   $self->_set_write_handle($handle);
+
+   $self->start if $self->autostart;
+
    return;
 }
 
 sub set_handles {
-   my ($self, %params) = @_; $self->stop;
+   my ($self, %params) = @_;
 
-   $params{read_handle } and $self->_set_read_handle ( $params{read_handle } );
-   $params{write_handle} and $self->_set_write_handle( $params{write_handle} );
-   $self->autostart and $self->start;
+   $self->stop;
+   $self->_set_read_handle($params{read_handle }) if $params{read_handle};
+   $self->_set_write_handle($params{write_handle}) if $params{write_handle};
+   $self->start if $self->autostart;
    return;
 }
 
 sub start {
-   my $self = shift; my $started = FALSE; $self->is_running and return;
+   my $self    = shift;
+   my $started = FALSE;
 
-   $self->_set_is_running( TRUE ); $self->_set_is_closing( FALSE );
+   return if $self->is_running;
 
-   $self->read_handle  and $self->on_read_ready
-      and $started = TRUE and $self->want_readready( TRUE );
-   $self->write_handle and $self->on_write_ready
-      and $started = TRUE and $self->want_writeready( TRUE );
+   $self->_set_is_running(TRUE);
+   $self->_set_is_closing(FALSE);
+
+   if ($self->read_handle && $self->on_read_ready) {
+      $self->want_readready(TRUE);
+      $started = TRUE;
+   }
+
+   if ($self->write_handle && $self->on_write_ready) {
+      $self->want_writeready(TRUE);
+      $started = TRUE;
+   }
 
    return $started;
 }
 
 sub stop {
-   my $self = shift; my $stopped = FALSE; $self->is_running or return;
+   my $self    = shift;
+   my $stopped = FALSE;
 
-   $self->_set_is_running( FALSE );
+   return unless $self->is_running;
 
-   $self->read_handle  and $stopped = TRUE and $self->want_readready( FALSE );
-   $self->write_handle and $stopped = TRUE and $self->want_writeready( FALSE );
+   $self->_set_is_running(FALSE);
+
+   if ($self->read_handle) {
+      $self->want_readready(FALSE);
+      $stopped = TRUE;
+   }
+
+   if ($self->write_handle) {
+      $self->want_writeready(FALSE);
+      $stopped = TRUE;
+   }
 
    return $stopped;
+}
+
+# Private methods
+sub _toggle_read_watcher {
+   my ($self, $want) = @_;
+
+   return unless defined $want;
+
+   my $loop = $self->loop;
+
+   throw Unspecified, ['read handle'] unless defined $self->read_handle;
+
+   if ($want && !$loop->watching_read_handle($self->read_handle)) {
+      throw Unspecified, ['on read ready'] unless defined $self->on_read_ready;
+
+      my $cb = $self->capture_weakself('on_read_ready');
+
+      $loop->watch_read_handle($self->read_handle, $cb);
+   }
+   else { $loop->unwatch_read_handle($self->read_handle) }
+
+   return;
+}
+
+sub _toggle_write_watcher  {
+   my ($self, $want) = @_;
+
+   return unless defined $want;
+
+   my $loop = $self->loop;
+
+   throw Unspecified, ['write handle'] unless defined $self->write_handle;
+
+   if ($want && !$loop->watching_write_handle($self->write_handle)) {
+      throw Unspecified, ['on write ready']
+         unless defined $self->on_write_ready;
+
+      my $cb = $self->capture_weakself('on_write_ready');
+
+      $loop->watch_write_handle($self->write_handle, $cb);
+   }
+   else { $loop->unwatch_write_handle($self->write_handle) }
+
+   return;
 }
 
 1;

@@ -2,12 +2,11 @@ package Async::IPC::Function;
 
 use namespace::autoclean;
 
-use Async::IPC::Functions  qw( log_debug );
-use Class::Usul::Constants qw( FALSE OK TRUE );
-use Class::Usul::Functions qw( bson64id );
-use Class::Usul::Types     qw( ArrayRef Bool HashRef NonZeroPositiveInt
-                               Object PositiveInt SimpleStr );
-use English                qw( -no_match_vars );
+use Async::IPC::Constants qw( FALSE OK TRUE );
+use Async::IPC::Functions qw( bson64id log_debug );
+use Async::IPC::Types     qw( ArrayRef Bool HashRef NonZeroPositiveInt
+                              Object PositiveInt SimpleStr );
+use English               qw( -no_match_vars );
 use Moo;
 
 extends q(Async::IPC::Base);
@@ -27,49 +26,17 @@ has 'worker_index'   => is => 'ro',  isa => ArrayRef[PositiveInt],
 has 'worker_objects' => is => 'ro',  isa => HashRef[Object],
    builder           => sub { {} };
 
-# Private methods
-my $_new_worker = sub {
-   my ($self, $index) = @_;
-
-   my $workers = $self->worker_objects;
-   my $args    = { %{ $self->worker_args } };
-   my $on_exit = delete $args->{on_exit} // sub {};
-
-   $args->{name       } //= $self->name."_wkr${index}";
-   $args->{description} //= $self->description." worker ${index}";
-   $args->{on_exit} = sub { delete $workers->{ $_[ 1 ] }; $on_exit->( @_ ) };
-
-   my $worker = $self->factory->new_notifier( $args ); my $pid = $worker->pid;
-
-   $workers->{ $pid } = $worker; $self->worker_index->[ $index ] = $pid;
-
-   return $worker;
-};
-
-my $_next_worker_index = sub {
-   my $self = shift; my $index = $Indexes->{ $self->name } // -1;
-
-   $index++; $index >= $self->max_workers and $index = 0;
-
-   return $Indexes->{ $self->name } = $index;
-};
-
-my $_next_worker = sub {
-   my $self  = shift;
-   my $index = $self->$_next_worker_index;
-   my $pid   = $self->worker_index->[ $index ] || 0;
-
-   return $self->worker_objects->{ $pid } || $self->$_new_worker( $index );
-};
-
 # Construction
 around 'BUILDARGS' => sub {
-   my ($orig, $self, @args) = @_; my $attr = $orig->( $self, @args );
+   my ($orig, $self, @args) = @_;
 
+   my $attr = $orig->($self, @args);
    my $args = { type => delete $attr->{worker_type} // 'routine' };
 
-   for my $k ( qw( child_args max_calls on_exit on_recv on_return ) ) {
-      my $v = delete $attr->{ $k }; defined $v and $args->{ $k } = $v;
+   for my $k (qw(child_args max_calls on_exit on_recv on_return)) {
+      my $v = delete $attr->{$k};
+
+      $args->{$k} = $v if defined $v;
    }
 
    $attr->{worker_args} = $args;
@@ -77,28 +44,46 @@ around 'BUILDARGS' => sub {
 };
 
 sub BUILD {
-   my $self = shift; $self->autostart and $self->start; return;
+   my $self = shift;
+
+   $self->start if $self->autostart;
+
+   return;
 }
 
 sub DEMOLISH {
-   my ($self, $gd) = @_; $gd and return; $self->close; return;
+   my ($self, $gd) = @_;
+
+   return if $gd;
+   $self->close;
+   return;
 }
 
 # Public methods
 sub call {
-   my ($self, @args) = @_; $self->is_running or return; $args[ 0 ] ||= bson64id;
+   my ($self, @args) = @_;
 
-   return $self->$_next_worker->call( @args );
+   return unless $self->is_running;
+
+   $args[0] ||= bson64id;
+
+   return $self->_next_worker->call(@args);
 }
 
 sub close {
-   my $self = shift; $self->stop; delete $Indexes->{ $self->name }; return;
+   my $self = shift;
+
+   $self->stop;
+   delete $Indexes->{$self->name};
+   return;
 }
 
 sub start {
-   my $self = shift; log_debug $self, 'Starting '.$self->description.' pool';
+   my $self = shift;
 
-   $self->$_next_worker for (0 .. $self->max_workers - 1);
+   log_debug $self, 'Starting '.$self->description.' pool';
+
+   $self->_next_worker for (0 .. $self->max_workers - 1);
 
    return;
 }
@@ -106,15 +91,55 @@ sub start {
 sub stop {
    my $self = shift;
 
-   $self->is_running or return; $self->_set_is_running( FALSE );
+   return unless $self->is_running;
+
+   $self->_set_is_running(FALSE);
 
    log_debug $self, 'Stopping '.$self->description.' pool';
 
    my $workers = $self->worker_objects;
 
-   $workers->{ $_ }->stop for (keys %{ $workers });
+   $workers->{$_}->stop for (keys %{$workers});
 
    return;
+}
+
+# Private methods
+sub _new_worker {
+   my ($self, $index) = @_;
+
+   my $workers = $self->worker_objects;
+   my $args    = { %{$self->worker_args} };
+   my $on_exit = delete $args->{on_exit} // sub {};
+
+   $args->{name       } //= $self->name."_wkr${index}";
+   $args->{description} //= $self->description." worker ${index}";
+   $args->{on_exit} = sub { delete $workers->{$_[1]}; $on_exit->(@_) };
+
+   my $worker = $self->factory->new_notifier($args);
+   my $pid    = $worker->pid;
+
+   $workers->{$pid} = $worker;
+   $self->worker_index->[$index] = $pid;
+
+   return $worker;
+}
+
+sub _next_worker {
+   my $self  = shift;
+   my $index = $self->_next_worker_index;
+   my $pid   = $self->worker_index->[$index] || 0;
+
+   return $self->worker_objects->{$pid} || $self->_new_worker($index);
+};
+
+sub _next_worker_index {
+   my $self  = shift;
+   my $index = $Indexes->{$self->name} // -1;
+
+   $index++; $index = 0 if $index >= $self->max_workers;
+
+   return $Indexes->{$self->name} = $index;
 }
 
 1;

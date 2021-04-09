@@ -2,9 +2,8 @@ package Async::IPC::File;
 
 use namespace::autoclean;
 
-use Async::IPC::Functions      qw( log_debug );
-use Class::Usul::Constants     qw( FALSE TRUE );
-use Class::Usul::Functions     qw( throw );
+use Async::IPC::Constants      qw( FALSE TRUE );
+use Async::IPC::Functions      qw( log_debug throw );
 use English                    qw( -no_match_vars );
 use File::DataClass::Constants qw( STAT_FIELDS );
 use File::DataClass::IO        qw( io );
@@ -14,48 +13,6 @@ use Scalar::Util               qw( blessed );
 use Moo;
 
 extends q(Async::IPC::Periodical);
-
-# Private attribute builders
-my $_build_fsnotifier = sub {
-   my $notifier; $OSNAME eq 'linux'
-      and can_load( modules => { 'Linux::Inotify2' => '1.22' } )
-      and $notifier = Linux::Inotify2->new
-      or  throw 'Inotify2 object cannot create: [_1]', [ $ERRNO ];
-
-   return $notifier;
-};
-
-my $_create_file_watcher = sub {
-   my $self    = shift;
-   my $mask    = Linux::Inotify2::IN_ATTRIB()
-               | Linux::Inotify2::IN_DELETE_SELF()
-               | Linux::Inotify2::IN_MODIFY()
-               | Linux::Inotify2::IN_MOVE_SELF();
-   my $cb      = $self->capture_weakself( $self->code );
-   my $watcher = $self->fsnotifier->watch( $self->path->name, $mask, $cb )
-      or throw 'Watcher object cannot create: [_1]', [ $ERRNO ];
-
-   return $watcher;
-};
-
-my $_build_watchers = sub {
-   my $self     = shift;
-   my $notifier = $self->fsnotifier or return;
-   my $path     = $self->path; $path->name or return;
-   my $dmask    = Linux::Inotify2::IN_CREATE();
-   my $cb       = $self->capture_weakself( sub {
-      my ($self, $ev) = @_;
-
-      $ev->fullname eq $path and $self->code->( $self, $ev );
-
-      return;
-   } );
-   my $dwatch   = $notifier->watch( $path->dirname, $dmask, $cb )
-      or throw 'Watcher object cannot create: [_1]', [ $ERRNO ];
-   my $fwatch; $path->exists and $fwatch = $self->$_create_file_watcher;
-
-   return [ $dwatch, $fwatch ];
-};
 
 # Public attributes
 has 'events'      => is => 'ro',   isa => HashRef, builder => sub { {} };
@@ -67,116 +24,61 @@ has 'last_stat'   => is => 'rwp',  isa => Maybe[HashRef];
 has 'path'        => is => 'ro',   isa => Path, required => TRUE;
 
 # Private attributes
-has '_fsnotifier' => is => 'lazy', isa => Maybe[Object],
-   builder        => $_build_fsnotifier, init_arg => undef,
-   reader         => 'fsnotifier';
+has '_fsnotifier' =>
+   is       => 'lazy',
+   isa      => Maybe[Object],
+   builder  => '_build_fsnotifier',
+   init_arg => undef,
+   reader   => 'fsnotifier';
 
-has '_watchers'   => is => 'lazy', isa => Maybe[ArrayRef],
-   builder        => $_build_watchers, init_arg => undef, reader => 'watchers';
-
-# Private functions
-my $_stat_fields = sub {
-   return [ grep { $_ ne 'blksize' && $_ ne 'blocks' } STAT_FIELDS ];
-};
-
-# Private methods
-my $_maybe_invoke_event = sub {
-   my ($self, $ev_name, $old, $new) = @_; my $events = $self->events;
-
-   exists $events->{ $ev_name } and defined $events->{ $ev_name }
-      and $events->{ $ev_name }->( $self, $old, $new );
-
-   return;
-};
-
-my $_call_handler = sub {
-   my ($self, $ev) = @_; my $path = $self->path;
-
-   my $old = $self->last_stat; my $new = $path->stat;
-
-   not defined $old and not defined $new and return;
-
-   if (defined $old and not defined $new) { # Path deleted
-      log_debug $self, "Path ${path} deleted";
-      $self->$_maybe_invoke_event( 'on_stat_changed', $old );
-      $self->_set_last_stat( undef );
-
-      if ($ev and $self->watchers and $self->watchers->[ 1 ]) {
-         $self->watchers->[ 1 ]->cancel; delete $self->watchers->[ 1 ];
-      }
-
-      return;
-   }
-
-   unless (defined $old) { # Watch for the path to be created
-      log_debug $self, "Path ${path} found";
-      $self->$_maybe_invoke_event( 'on_stat_changed', undef, $new );
-      $self->_set_last_stat( $new );
-      $ev and $self->watchers and not $self->watchers->[ 1 ]
-          and $self->watchers->[ 1 ] = $self->$_create_file_watcher;
-      return;
-   }
-
-   my $any_change = FALSE;
-
-   if ($old->{device} != $new->{device} or $old->{inode} != $new->{inode}) {
-      $self->$_maybe_invoke_event( 'on_devino_changed', $old, $new );
-      $any_change++;
-   }
-
-   for my $field (@{ $_stat_fields->() }) {
-      $old->{ $field } == $new->{ $field } and next; $any_change++;
-
-      $self->$_maybe_invoke_event
-         ( "on_${field}_changed", $old->{ $field }, $new->{ $field } );
-   }
-
-   if ($any_change) {
-      $self->$_maybe_invoke_event( 'on_stat_changed', $old, $new );
-      $self->_set_last_stat( $new );
-   }
-
-   if (defined $ev and blessed $ev and $ev->can( 'mask' )) {
-      log_debug $self, 'Called event '.$ev->mask." change ${any_change}";
-   }
-   else { log_debug $self, "Called change ${any_change}" }
-
-   return;
-};
+has '_watchers' =>
+   is       => 'lazy',
+   isa      => Maybe[ArrayRef],
+   builder  => '_build_watchers',
+   init_arg => undef,
+   reader   => 'watchers';
 
 # Construction
 around 'BUILDARGS' => sub {
-   my ($orig, $self, @args) = @_; my $attr = $orig->( $self, @args );
+   my ($orig, $self, @args) = @_;
 
-   for my $field ('devino', @{ $_stat_fields->() }, 'stat') {
-      my $code = delete $attr->{ "on_${field}_changed" };
+   my $attr = $orig->($self, @args);
 
-      defined $code and $attr->{events}->{ "on_${field}_changed" } //= $code;
+   for my $field ('devino', _stat_fields(), 'stat') {
+      my $code = delete $attr->{"on_${field}_changed"};
+
+      $attr->{events}->{"on_${field}_changed"} //= $code if defined $code;
    }
 
-   my $path; ($path = $attr->{path} and blessed $path
-      and $path->isa( 'File::DataClass::IO' ))
-      or  $attr->{path} = $path ? io $path : $path;
+   my $path = $attr->{path};
+
+   $attr->{path} = $path ? io $path : $path
+      unless $path && blessed $path && $path->isa('File::DataClass::IO');
 
    if (my $handle = delete $attr->{handle}) {
-      blessed $handle or $handle = IO::Handle->new_from_fd( $handle, 'r' );
+      $handle = IO::Handle->new_from_fd($handle, 'r') unless blessed $handle;
       $attr->{path} = io { io_handle => $handle };
    }
 
-   $path = $attr->{path} and $attr->{last_stat} = $path->stat;
-   $attr->{code} = $_call_handler;
+   if ($path = $attr->{path}) { $attr->{last_stat} = $path->stat }
+
+   $attr->{code} = \&_call_handler;
    return $attr;
 };
 
 around 'start' => sub {
    my ($orig, $self, @args) = @_;
 
-   my $notifier; $notifier = $self->fsnotifier and $self->watchers
-      and log_debug( $self, 'Starting '.$self->description.' native' )
-      and return $self->loop->watch_read_handle
-         ( $notifier->fileno, sub { $notifier->poll } );
+   if (my $notifier = $self->fsnotifier and $self->watchers) {
 
-   return $orig->( $self, @args );
+      log_debug $self, 'Starting '.$self->description.' native';
+
+      my $cb = sub { $notifier->poll };
+
+      return $self->loop->watch_read_handle($notifier->fileno, $cb);
+   }
+
+   return $orig->($self, @args);
 };
 
 around 'stop' => sub {
@@ -184,13 +86,140 @@ around 'stop' => sub {
 
    if (my $notifier = $self->fsnotifier and my $watchers = $self->watchers) {
       log_debug $self, 'Stopping '.$self->description.' native';
-      $self->loop->unwatch_read_handle( $notifier->fileno );
-      $watchers->[ 0 ]->cancel; $watchers->[ 1 ] and $watchers->[ 1 ]->cancel;
+      $self->loop->unwatch_read_handle($notifier->fileno);
+      $watchers->[0]->cancel;
+      $watchers->[1]->cancel if $watchers->[1];
       return;
    }
 
-   return $orig->( $self, @args );
+   return $orig->($self, @args);
 };
+
+# Private methods
+sub _build_fsnotifier {
+   my $notifier;
+   my $modules = { 'Linux::Inotify2' => '1.22' };
+
+   if ($OSNAME eq 'linux' && can_load(modules => $modules)) {
+      throw 'Inotify2 object cannot create: [_1]', [$ERRNO]
+         unless $notifier = Linux::Inotify2->new;
+   }
+
+   return $notifier;
+}
+
+sub _build_watchers {
+   my $self     = shift;
+   my $notifier = $self->fsnotifier or return;
+   my $path     = $self->path; $path->name or return;
+   my $dmask    = Linux::Inotify2::IN_CREATE();
+   my $cb       = $self->capture_weakself(sub {
+      my ($self, $ev) = @_;
+
+      $self->code->($self, $ev) if $ev->fullname eq $path;
+
+      return;
+   } );
+   my $dwatch   = $notifier->watch($path->dirname, $dmask, $cb)
+      or throw 'Watcher object cannot create: [_1]', [$ERRNO];
+   my $fwatch;
+
+   $fwatch = $self->_create_file_watcher if $path->exists;
+
+   return [$dwatch, $fwatch];
+}
+
+sub _call_handler {
+   my ($self, $ev) = @_;
+
+   my $path = $self->path;
+   my $old  = $self->last_stat;
+   my $new  = $path->stat;
+
+   return if !defined $old && !defined $new;
+
+   if (defined $old && !defined $new) { # Path deleted
+      log_debug $self, "Path ${path} deleted";
+      $self->_maybe_invoke_event('on_stat_changed', $old);
+      $self->_set_last_stat(undef);
+
+      if ($ev && $self->watchers && $self->watchers->[1]) {
+         $self->watchers->[1]->cancel;
+         delete $self->watchers->[1];
+      }
+
+      return;
+   }
+
+   unless (defined $old) { # Watch for the path to be created
+      log_debug $self, "Path ${path} found";
+      $self->_maybe_invoke_event('on_stat_changed', undef, $new);
+      $self->_set_last_stat($new);
+
+      $self->watchers->[1] = $self->_create_file_watcher
+         if $ev && $self->watchers && !$self->watchers->[1];
+
+      return;
+   }
+
+   my $any_change = FALSE;
+
+   if ($old->{device} != $new->{device} || $old->{inode} != $new->{inode}) {
+      $self->_maybe_invoke_event('on_devino_changed', $old, $new);
+      $any_change++;
+   }
+
+   for my $field (_stat_fields()) {
+      next if $old->{$field} == $new->{$field};
+
+      $any_change++;
+
+      $self->_maybe_invoke_event(
+         "on_${field}_changed", $old->{$field}, $new->{$field}
+      );
+   }
+
+   if ($any_change) {
+      $self->_maybe_invoke_event('on_stat_changed', $old, $new);
+      $self->_set_last_stat($new);
+   }
+
+   if (defined $ev && blessed $ev && $ev->can('mask')) {
+      log_debug $self, 'Called event '.$ev->mask." change ${any_change}";
+   }
+   else { log_debug $self, "Called change ${any_change}" }
+
+   return;
+}
+
+sub _create_file_watcher {
+   my $self    = shift;
+   my $mask    = Linux::Inotify2::IN_ATTRIB()
+               | Linux::Inotify2::IN_DELETE_SELF()
+               | Linux::Inotify2::IN_MODIFY()
+               | Linux::Inotify2::IN_MOVE_SELF();
+   my $cb      = $self->capture_weakself($self->code);
+   my $watcher = $self->fsnotifier->watch($self->path->name, $mask, $cb)
+      or throw 'Watcher object cannot create: [_1]', [$ERRNO];
+
+   return $watcher;
+}
+
+sub _maybe_invoke_event {
+   my ($self, $ev_name, $old, $new) = @_;
+
+   my $events = $self->events;
+
+   $events->{$ev_name}->($self, $old, $new)
+      if exists $events->{$ev_name} && defined $events->{$ev_name};
+
+   return;
+}
+
+# Private functions
+sub _stat_fields {
+   return grep { $_ ne 'blksize' && $_ ne 'blocks' } STAT_FIELDS;
+}
 
 1;
 

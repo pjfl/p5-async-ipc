@@ -3,10 +3,11 @@ package Async::IPC::Future;
 use strictures;
 use parent 'Future';
 
-use Class::Usul::Functions qw( throw );
+use Async::IPC::Functions qw(throw);
 
 sub new {
-   my $proto = shift; my $self = $proto->SUPER::new;
+   my $proto = shift;
+   my $self  = $proto->SUPER::new;
 
    if (ref $proto) { $self->{loop} = $proto->{loop} }
    else { $self->{loop} = shift }
@@ -15,27 +16,34 @@ sub new {
 }
 
 sub loop {
-   return $_[ 0 ]->{loop};
+   my $self = shift;
+
+   return $self->{loop};
 }
 
 sub await {
-   my $self = shift; $self->loop->once( @_ ); return;
+   my ($self, @args) = @_;
+
+   $self->loop->once(@args);
+   return;
 }
 
 sub done_later {
    my ($self, @result) = @_;
 
-   $self->loop->watch_idle( $self->loop->uuid, sub { $self->done( @result ) } );
+   $self->loop->watch_idle($self->loop->uuid, sub { $self->done(@result) });
 
    return $self;
 }
 
 sub fail_later {
-   my ($self, $exception, @details) = @_; my $id = $self->loop->uuid;
+   my ($self, $exception, @details) = @_;
 
-   $exception or throw 'Expected a true exception';
+   throw 'Expected a true exception' unless $exception;
 
-   $self->loop->watch_idle( $id, sub { $self->fail( $exception, @details ) } );
+   my $id = $self->loop->uuid;
+
+   $self->loop->watch_idle($id, sub { $self->fail($exception, @details) });
 
    return $self;
 }

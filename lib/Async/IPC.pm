@@ -2,42 +2,44 @@ package Async::IPC;
 
 use 5.010001;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 28 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 29 $ =~ /\d+/gmx );
 
+use Async::IPC::Constants qw( EXCEPTION_CLASS TRUE );
+use Async::IPC::Functions qw( ensure_class_loaded first_char throw to_hashref );
 use Async::IPC::Loop;
-use Class::Usul::Constants qw( EXCEPTION_CLASS TRUE );
-use Class::Usul::Functions qw( arg_list ensure_class_loaded first_char throw );
-use Class::Usul::Types     qw( Object Plinth );
-use Unexpected::Functions  qw( Unspecified );
+use Async::IPC::Types     qw( Builder Object );
+use Unexpected::Functions qw( Unspecified );
 use Moo;
 
 # Public attributes
-has 'loop'    => is => 'lazy', isa => Object,
-   builder    => sub { Async::IPC::Loop->new( builder => $_[ 0 ]->builder ) };
+has 'builder' => is => 'ro',   isa => Builder, required => TRUE;
 
-# Private attributes
-has 'builder' => is => 'ro',   isa => Plinth, required => TRUE;
+has 'loop'    => is => 'lazy', isa => Object,
+   builder    => sub { Async::IPC::Loop->new( builder => $_[0]->builder ) };
 
 # Public methods
 sub new_notifier {
-   my $self  = shift; my $args = arg_list @_;
+   my ($self, @args) = @_;
 
-   my $type  = $args->{type} or throw Unspecified, [ 'type' ];
-
+   my $args  = to_hashref @args;
+   my $type  = $args->{type} or throw Unspecified, ['type'];
    my $class = first_char $type eq '+' ? ($args->{type} = substr $type, 1)
-                                       : __PACKAGE__.'::'.(ucfirst $type);
+                                       : __PACKAGE__ . '::' . (ucfirst $type);
 
    ensure_class_loaded $class;
 
-   $args->{builder} //= $self->builder; $args->{loop} //= $self->loop;
+   $args->{builder} //= $self->builder;
+   $args->{loop} //= $self->loop;
 
-   return $class->new( $args );
+   return $class->new($args);
 }
 
 sub new_future {
-   my $self = shift; ensure_class_loaded 'Async::IPC::Future';
+   my $self = shift;
 
-   return Async::IPC::Future->new( $self );
+   ensure_class_loaded 'Async::IPC::Future';
+
+   return Async::IPC::Future->new($self);
 }
 
 1;
@@ -183,7 +185,7 @@ Peter Flanigan, C<< <pjfl@cpan.org> >>
 
 =head1 License and Copyright
 
-Copyright (c) 2016 Peter Flanigan. All rights reserved
+Copyright (c) 2021 Peter Flanigan. All rights reserved
 
 This program is free software; you can redistribute it and/or modify it
 under the same terms as Perl itself. See L<perlartistic>

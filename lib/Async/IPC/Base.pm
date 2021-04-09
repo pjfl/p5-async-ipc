@@ -3,27 +3,27 @@ package Async::IPC::Base;
 use namespace::autoclean;
 
 use Async::IPC;
-use Async::IPC::Functions  qw( log_debug );
-use Class::Usul::Constants qw( FALSE TRUE );
-use Class::Usul::Functions qw( is_coderef throw );
-use Class::Usul::Types     qw( Bool CodeRef HashRef Maybe NonEmptySimpleStr
-                               Object Plinth PositiveInt );
-use English                qw( -no_match_vars );
-use Scalar::Util           qw( blessed weaken );
+use Async::IPC::Constants qw( FALSE TRUE );
+use Async::IPC::Functions qw( log_debug throw );
+use Async::IPC::Types     qw( Bool Builder CodeRef HashRef Maybe
+                              NonEmptySimpleStr Object PositiveInt );
+use English               qw( -no_match_vars );
+use Ref::Util             qw( is_coderef );
+use Scalar::Util          qw( blessed weaken );
 use Moo;
 
-my $Notifiers = {};
+my $notifiers = {};
 
 # Public attributes
 has 'autostart'   => is => 'ro',   isa => Bool, default => TRUE;
 
-has 'builder'     => is => 'ro',   isa => Plinth, required => TRUE,
+has 'builder'     => is => 'ro',   isa => Builder, required => TRUE,
    handles        => [ 'config', 'debug', 'lock', 'log', 'run_cmd' ];
 
 has 'description' => is => 'ro',   isa => NonEmptySimpleStr, required => TRUE;
 
 has 'factory'     => is => 'lazy', isa => Object, builder => sub {
-   Async::IPC->new( builder => $_[ 0 ]->builder, loop => $_[ 0 ]->loop, ) };
+   Async::IPC->new( builder => $_[0]->builder, loop => $_[0]->loop, ) };
 
 has 'futures'     => is => 'ro',   isa => HashRef, builder => sub { {} };
 
@@ -37,54 +37,44 @@ has 'pid'         => is => 'rwp',  isa => PositiveInt, builder => sub { $PID },
    lazy           => TRUE;
 
 has 'type'        => is => 'lazy', isa => NonEmptySimpleStr, builder => sub {
-   my $class = blessed $_[ 0 ]; return lc ((split m{ :: }mx, $class)[ -1 ]);
+   my $class = blessed $_[0]; return lc ((split m{ :: }mx, $class)[-1]);
 };
 
 # Construction
 around 'BUILDARGS' => sub {
-   my ($orig, $self, @args) = @_; my $attr = $orig->( $self, @args );
+   my ($orig, $self, @args) = @_;
 
+   my $attr = $orig->($self, @args);
    my $desc = delete $attr->{desc}; $attr->{description} //= $desc;
 
    return $attr;
 };
 
 sub BUILD {
-   my $self = shift; my $id = $self->type.'::'.$self->name;
+   my $self = shift;
+   my $id   = $self->type.'::'.$self->name;
 
-   exists $Notifiers->{ $id } and $Notifiers->{ $id }
-      and throw 'Notifier id [_1] not unique', [ $id ];
+   throw 'Notifier id [_1] not unique', [$id]
+      if exists $notifiers->{$id} && $notifiers->{$id};
 
-   $Notifiers->{ $id } = TRUE;
+   $notifiers->{$id} = TRUE;
    return;
 }
 
-# Private methods
-my $_can_event = sub {
-   my ($self, $ev_name) = @_;
-
-   return ($self->can( $ev_name ) && $self->$ev_name);
-};
-
-my $_invoke_event = sub {
-   my ($self, $ev_name, $code, @args) = @_;
-
-   log_debug $self, "Invoke event ${ev_name}";
-
-   return $code->( $self, @args );
-};
-
 # Public methods
 sub adopt_future {
-   my ($self, $f) = @_; my $fkey = "${f}"; # Stable stringification
+   my ($self, $f) = @_;
 
-   $self->futures->{ $fkey } = $f;
+   my $fkey = "${f}"; # Stable stringification
 
-   $f->on_ready( $self->capture_weakself( sub {
-      my ($self, $f) = @_; delete $self->futures->{ $fkey };
+   $self->futures->{$fkey} = $f;
 
-      $f->failure and $self->invoke_error( $f->failure );
-   } ) );
+   $f->on_ready($self->capture_weakself(sub {
+      my $self = shift;
+      my $f    = delete $self->futures->{$fkey};
+
+      $self->invoke_error($f->failure) if $f->failure;
+   }));
 
    return $f;
 }
@@ -92,52 +82,76 @@ sub adopt_future {
 sub capture_weakself {
    my ($self, $code) = @_; weaken $self;
 
-   is_coderef $code or $self->can( $code ) or throw
-      'Package [_1] cannot locate method [_2]', [ blessed $self, $code ];
+   throw 'Package [_1] cannot locate method [_2]', [ blessed $self, $code ]
+      unless is_coderef($code) || $self->can($code);
 
    return sub {
-      $self or return; my $cb = (is_coderef $code) ? $code : $self->$code;
+      $self or return;
 
-      unshift @_, $self; goto &$cb;
+      my $cb = is_coderef($code) ? $code : $self->$code;
+
+      unshift @_, $self;
+      goto &$cb;
    };
 }
 
 sub invoke_error {
    my ($self, $message, $name, @details) = @_;
 
-   $self->on_error or throw $message;
+   throw $message unless $self->on_error;
 
-   return $self->on_error->( $self, $message, $name, @details );
+   return $self->on_error->($self, $message, $name, @details);
 }
 
 sub invoke_event {
    my ($self, $ev_name, @args) = @_;
 
-   my $code = $self->$_can_event( $ev_name )
+   my $code = $self->_can_event($ev_name)
       or throw 'Event [_1] unknown', [ $ev_name ];
 
-   return $self->$_invoke_event( $ev_name, $code, @args );
+   return $self->_invoke_event($ev_name, $code, @args);
 }
 
 sub maybe_invoke_event {
    my ($self, $ev_name, @args) = @_;
 
-   my $code = $self->$_can_event( $ev_name ) or return;
+   my $code = $self->_can_event($ev_name) or return;
 
-   return $self->$_invoke_event( $ev_name, $code, @args );
+   return $self->_invoke_event($ev_name, $code, @args);
 }
 
 sub replace_weakself {
    my ($self, $code) = @_; weaken $self;
 
-   is_coderef $code or $self->can( $code ) or throw
-      'Package [_1] cannot locate method [_2]', [ blessed $self, $code ];
+   throw 'Package [_1] cannot locate method [_2]', [ blessed $self, $code ]
+      unless is_coderef($code) || $self->can($code);
 
    return sub {
-      $self or return; my $cb = (is_coderef $code) ? $code : $self->$code;
+      return unless $self;
 
-      shift @_; unshift @_, $self; goto &$cb;
+      my $cb = is_coderef($code) ? $code : $self->$code;
+
+      shift @_;
+      unshift @_, $self;
+      goto &$cb;
    };
+}
+
+# Private methods
+sub _can_event {
+   my ($self, $ev_name) = @_;
+
+   return 0 unless $self->can($ev_name);
+
+   return $self->$ev_name;
+}
+
+sub _invoke_event {
+   my ($self, $ev_name, $code, @args) = @_;
+
+   log_debug $self, "Invoke event ${ev_name}";
+
+   return $code->($self, @args);
 }
 
 1;
@@ -219,7 +233,7 @@ construction
 
    $code_ref = $self->can_event( $event_name );
 
-Returns the code reference of then handler if this object can handle the named
+Returns the code reference of the handler if this object can handle the named
 event, otherwise returns false
 
 =head2 C<capture_weakself>

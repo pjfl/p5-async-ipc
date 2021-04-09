@@ -46,8 +46,10 @@ my $routine     =  $factory->new_notifier
       on_exit   => sub { $loop->stop },
       on_recv   => sub { shift; shift; sum @_ },
       on_return => sub {
-         my $self = shift; $results->{ $_[ 0 ]->[ 0 ] } = $_[ 0 ]->[ 1 ];
-         return 1 }, );
+         my $self = shift;
+         $results->{ $_[0]->[0] } = $_[0]->[1];
+         return 1;
+      }, );
 
 for (my $i = 0; $i < $max_calls; $i++) {
    my @args = 1; my $n = 0; while ($n <= $i) { $args[ $n + 1 ] = $n + 2; $n++ }

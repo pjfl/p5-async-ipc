@@ -2,13 +2,12 @@ package Async::IPC::Periodical;
 
 use namespace::autoclean;
 
-use Async::IPC::Functions  qw( log_debug );
-use Class::Usul::Constants qw( EXCEPTION_CLASS FALSE TRUE );
-use Class::Usul::Functions qw( throw );
-use Class::Usul::Types     qw( Bool CodeRef NonZeroPositiveNum
-                               SimpleStr Undef );
-use English                qw( -no_match_vars );
-use Unexpected::Functions  qw( Unspecified );
+use Async::IPC::Constants qw( EXCEPTION_CLASS FALSE TRUE );
+use Async::IPC::Functions qw( log_debug throw );
+use Async::IPC::Types     qw( Bool CodeRef NonZeroPositiveNum
+                              SimpleStr Undef );
+use English               qw( -no_match_vars );
+use Unexpected::Functions qw( Unspecified );
 use Moo;
 
 extends q(Async::IPC::Base);
@@ -20,13 +19,15 @@ has 'interval'   => is => 'ro',  isa => NonZeroPositiveNum, default => 1;
 
 has 'is_running' => is => 'rwp', isa => Bool, default => FALSE;
 
-has '+pid'       => builder => sub { $_[ 0 ]->loop->uuid };
+has '+pid'       => builder => sub { $_[0]->loop->uuid };
 
-has 'time_spec'  => is => 'ro',  isa => SimpleStr | Undef;
+has 'time_spec'  => is => 'ro',  isa => SimpleStr|Undef;
 
 # Construction
 sub BUILD {
-   my $self = shift; $self->autostart or return;
+   my $self = shift;
+
+   return unless $self->autostart;
 
    if ($self->time_spec) { $self->once } else { $self->start }
 
@@ -34,54 +35,71 @@ sub BUILD {
 }
 
 sub DEMOLISH {
-   my ($self, $gd) = @_; $gd and return; $self->stop; return;
+   my ($self, $gd) = @_;
+
+   return if $gd;
+
+   $self->stop;
+   return;
 }
 
 # Public methods
 sub once {
    my $self = shift;
 
-   $self->is_running and return; $self->_set_is_running( TRUE );
+   return if $self->is_running;
 
-   my $code      = $self->code;
-   my $cb        = $self->capture_weakself( sub {
-      my $self   = shift; $code->( $self ); $self->_set_is_running( FALSE ) } );
-   my $time_spec = $self->time_spec or throw Unspecified, [ 'time_spec' ];
+   $self->_set_is_running(TRUE);
 
-   $self->loop->watch_time( $self->pid, $cb, $self->interval, $time_spec );
+   my $code = $self->code;
+   my $cb   = $self->capture_weakself(sub {
+      my $self = shift;
+
+      $code->($self);
+      $self->_set_is_running(FALSE)
+   });
+   my $time_spec = $self->time_spec or throw Unspecified, ['time_spec'];
+
+   $self->loop->watch_time($self->pid, $cb, $self->interval, $time_spec);
    return TRUE;
 }
 
 sub restart {
-   my $self = shift; $self->is_running or return;
+   my $self = shift;
 
-   my $cb = $self->loop->unwatch_time( $self->pid );
+   return unless $self->is_running;
 
-   $cb and $self->loop->watch_time
-      ( $self->pid, $cb, $self->interval, $self->time_spec );
+   my $cb = $self->loop->unwatch_time($self->pid);
+
+   $self->loop->watch_time(
+      $self->pid, $cb, $self->interval, $self->time_spec
+   ) if $cb;
+
    return TRUE;
 }
 
 sub start {
    my $self = shift;
 
-   $self->is_running and return; $self->_set_is_running( TRUE );
+   return if $self->is_running;
 
+   $self->_set_is_running(TRUE);
    log_debug $self, 'Starting '.$self->description;
 
-   my $cb = $self->capture_weakself( $self->code );
+   my $cb = $self->capture_weakself($self->code);
 
-   $self->loop->watch_time( $self->pid, $cb, $self->interval );
+   $self->loop->watch_time($self->pid, $cb, $self->interval);
    return TRUE;
 }
 
 sub stop {
    my $self = shift;
 
-   $self->is_running or return; $self->_set_is_running( FALSE );
+   return unless $self->is_running;
 
+   $self->_set_is_running(FALSE);
    log_debug $self, 'Stopping '.$self->description;
-   $self->loop->unwatch_time( $self->pid );
+   $self->loop->unwatch_time($self->pid);
    return TRUE;
 }
 
