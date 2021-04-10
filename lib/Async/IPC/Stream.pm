@@ -322,19 +322,19 @@ sub _nonfatal_error {
 }
 
 sub _reduce_queue {
-   my $queue = shift;
-   my $head  = $queue->[0];
+   my $queue  = shift;
+   my $first  = $queue->[0];
    my $second;
 
    while ($second = $queue->[1]
-          and !ref $second->data
-          and $head->writelen == $second->writelen
-          and !$head->on_write
-          and !$second->on_write
-          and !$head->on_flush) {
-      $head->data    .= $second->data;
-      $head->on_write = $second->on_write;
-      $head->on_flush = $second->on_flush;
+          and not ref $second->data
+          and $first->writelen == $second->writelen
+          and not $first->on_write
+          and not $second->on_write
+          and not $first->on_flush) {
+      $first->data    .= $second->data;
+      $first->on_write = $second->on_write;
+      $first->on_flush = $second->on_flush;
       splice @{$queue}, 1, 1, ();
    }
 
@@ -364,11 +364,11 @@ sub _build_reader {
 
 sub _build_writer {
    return sub {
-      my ($self, $handle, $head) = @_;
+      my ($self, $handle, $packet) = @_;
 
-      my $wrote = syswrite $handle, $head->data, $head->writelen;
+      my $wrote = syswrite $handle, $packet->data, $packet->writelen;
 
-      $head->data(substr($head->data, $wrote)) if $wrote;
+      $packet->data(substr($packet->data, $wrote)) if $wrote;
 
       return $wrote;
    }
@@ -390,7 +390,7 @@ sub _handle_read_error {
 }
 
 sub _handle_write_error {
-   my ($self, $head, $errno) = @_;
+   my ($self, $packet, $errno) = @_;
 
    if ($errno == EAGAIN or $errno == EWOULDBLOCK) {
       $self->maybe_invoke_event('on_writeable_stop') if $self->writeable;
@@ -404,7 +404,7 @@ sub _handle_write_error {
       $self->maybe_invoke_event('on_write_eof');
    }
 
-   $head->on_error->($self, $errno) if $head->on_error;
+   $packet->on_error->($self, $errno) if $packet->on_error;
 
    $self->close_now unless $self->maybe_invoke_event('on_write_error', $errno);
 
@@ -485,14 +485,14 @@ sub _flush_one_read {
 sub _flush_one_write {
    my $self       = shift;
    my $writequeue = $self->writequeue;
-   my $head;
+   my $packet;
 
-   while ($head = $writequeue->[0] and ref $head->data) {
-      if (is_coderef $head->data) {
-         my $data = $head->data->($self);
+   while ($packet = $writequeue->[0] and ref $packet->data) {
+      if (is_coderef $packet->data) {
+         my $data = $packet->data->($self);
 
          unless (defined $data) {
-            $head->on_flush->($self) if $head->on_flush;
+            $packet->on_flush->($self) if $packet->on_flush;
             shift @{$writequeue};
             return TRUE;
          }
@@ -502,17 +502,17 @@ sub _flush_one_write {
          }
 
          unshift @{$writequeue}, Async::IPC::Writer->new(
-            $data, $head->writelen, $head->on_write, undef, undef, FALSE
+            $data, $packet->writelen, $packet->on_write, undef, undef, FALSE
          );
       }
-      elsif (blessed $head->data and $head->data->isa('Future')) {
-         my $f = $head->data;
+      elsif (blessed $packet->data and $packet->data->isa('Future')) {
+         my $f = $packet->data;
 
          unless ($f->is_ready) {
-            return FALSE if $head->watching;
+            return FALSE if $packet->watching;
 
             $f->on_ready(sub { $self->_flush_one_write });
-            $head->watching(TRUE);
+            $packet->watching(TRUE);
             return FALSE;
          }
 
@@ -522,25 +522,25 @@ sub _flush_one_write {
             $data = $encoder->encode($data) unless ref $data;
          }
 
-         $head->data = $data;
+         $packet->data = $data;
       }
-      else { throw 'Reference [_1] unknown to write queue', [$head->data] }
+      else { throw 'Reference [_1] unknown to write queue', [$packet->data] }
    }
 
    _reduce_queue($writequeue);
 
-   throw 'TODO: head data does not contain a plain string' if ref $head->data;
+   throw 'TODO: head data does not contain a plain string' if ref $packet->data;
 
-   my $wrote = $self->writer->($self, $self->write_handle, $head);
+   my $wrote = $self->writer->($self, $self->write_handle, $packet);
 
-   return $self->_handle_write_error($head, $ERRNO) unless defined $wrote;
+   return $self->_handle_write_error($packet, $ERRNO) unless defined $wrote;
 
-   log_debug $self, "Wrote ${wrote} bytes. Head length ".(length $head->data);
+   log_debug $self, "Wrote ${wrote} bytes. Head length ".(length $packet->data);
 
-   $head->on_write->($self, $wrote) if $head->on_write;
+   $packet->on_write->($self, $wrote) if $packet->on_write;
 
-   unless (length $head->data) {
-      $head->on_flush->($self) if $head->on_flush;
+   unless (length $packet->data) {
+      $packet->on_flush->($self) if $packet->on_flush;
 
       shift @{$self->writequeue};
    }
