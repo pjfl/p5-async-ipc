@@ -8,7 +8,7 @@ use Async::IPC::Types     qw( Bool CodeRef Maybe NonZeroPositiveInt
 use Ref::Util             qw( is_hashref );
 use Moo;
 
-has 'data'     => is => 'ro', isa => CodeRef | Object | Str;
+has 'data'     => is => 'rw', isa => CodeRef | Object | Str;
 
 has 'writelen' => is => 'ro', isa => NonZeroPositiveInt;
 
