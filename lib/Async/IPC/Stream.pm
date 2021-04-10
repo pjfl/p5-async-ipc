@@ -368,7 +368,7 @@ sub _build_writer {
 
       my $wrote = syswrite $handle, ${$data_ref}, $len;
 
-      substr(${$data_ref}, 0, $wrote) = NUL if $wrote;
+      ${$data_ref} = substr(${$data_ref}, $wrote) if $wrote;
 
       return $wrote;
    }
