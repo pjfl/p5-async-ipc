@@ -33,6 +33,7 @@ my $prereqs  = {
     'strictures' => '2.000000'
   },
   'test_requires' => {
+    'Class::Usul' => '0.84',
     'File::Spec' => '0',
     'Module::Build' => '0.4004',
     'Module::Metadata' => '0',

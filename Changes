@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - Added Class::Usul to test requires
           - Updated dependencies
           - Turned on debug output during testing
           - Should not throw in a callback
