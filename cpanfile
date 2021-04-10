@@ -21,7 +21,7 @@ on 'build' => sub {
 };
 
 on 'test' => sub {
-  requires "Class::Usul" => "0.84";
+  requires "Class::Usul" => "v0.84.1";
   requires "File::Spec" => "0";
   requires "Module::Build" => "0.4004";
   requires "Module::Metadata" => "0";
