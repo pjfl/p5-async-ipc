@@ -46,8 +46,8 @@ my $routine     =  $factory->new_notifier
       on_exit   => sub { $loop->stop },
       on_recv   => sub { shift; shift; sum @_ },
       on_return => sub {
-         my $self = shift;
-         $results->{ $_[0]->[0] } = $_[0]->[1];
+         my ($self, $args) = @_;
+         $results->{ $args->[0] } = $args->[1];
          return 1;
       }, );
 

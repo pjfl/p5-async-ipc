@@ -364,11 +364,11 @@ sub _build_reader {
 
 sub _build_writer {
    return sub {
-      my ($self, $handle, undef, $len) = @_;
+      my ($self, $handle, $data_ref, $len) = @_;
 
-      my $wrote = syswrite $handle, $_[2], $len;
+      my $wrote = syswrite $handle, ${$data_ref}, $len;
 
-      substr($_[2], 0, $wrote) = NUL if $wrote;
+      substr(${$data_ref}, 0, $wrote) = NUL if $wrote;
 
       return $wrote;
    }
@@ -532,7 +532,7 @@ sub _flush_one_write {
    throw 'TODO: head data does not contain a plain string' if ref $head->data;
 
    my $wrote = $self->writer->(
-      $self, $self->write_handle, $head->data, $head->writelen
+      $self, $self->write_handle, \$head->data, $head->writelen
    );
 
    return $self->_handle_write_error($head, $ERRNO) unless defined $wrote;

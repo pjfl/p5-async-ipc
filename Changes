@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - Candidate fix for write buffer truncation bug
           - Added Class::Usul to test requires
           - Updated dependencies
           - Turned on debug output during testing
