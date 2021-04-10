@@ -263,9 +263,9 @@ sub write {
       return;
    }
 
-   my $encoder  = $self->encoder;
-
-   $data = $encoder->encode($data) if $encoder and not ref $data;
+   if (my $encoder = $self->encoder) {
+      $data = $encoder->encode($data) unless ref $data;
+   }
 
    my $on_write = delete $params{on_write};
    my $on_flush = delete $params{on_flush};
@@ -392,7 +392,7 @@ sub _handle_read_error {
 sub _handle_write_error {
    my ($self, $head, $errno) = @_;
 
-   if ($errno == EAGAIN || $errno == EWOULDBLOCK) {
+   if ($errno == EAGAIN or $errno == EWOULDBLOCK) {
       $self->maybe_invoke_event('on_writeable_stop') if $self->writeable;
       $self->_set_writeable(FALSE);
    }
@@ -422,9 +422,9 @@ sub _toggle_read_watcher {
 
    return unless defined $want;
 
-   $self->read_handle and $self->want_readready(
+   $self->want_readready(
       $self->want_readready_for_read || $self->want_readready_for_write
-   );
+   ) if $self->read_handle;
 
    return;
 }
@@ -434,9 +434,9 @@ sub _toggle_write_watcher {
 
    return unless defined $want;
 
-   $self->write_handle and $self->want_writeready(
+   $self->want_writeready(
       $self->want_writeready_for_read || $self->want_writeready_for_write
-   );
+   ) if $self->write_handle;
 
    return;
 }
@@ -497,9 +497,9 @@ sub _flush_one_write {
             return TRUE;
          }
 
-         my $encoder = $self->encoder;
-
-         $data = $encoder->encode( $data ) if $encoder and not ref $data;
+         if (my $encoder = $self->encoder) {
+            $data = $encoder->encode($data) unless ref $data;
+         }
 
          unshift @{$writequeue}, Async::IPC::Writer->new(
             $data, $head->writelen, $head->on_write, undef, undef, FALSE
@@ -516,10 +516,11 @@ sub _flush_one_write {
             return FALSE;
          }
 
-         my $data     = $f->get;
-         my $encoder  = $self->encoder;
+         my $data = $f->get;
 
-         $data = $encoder->encode($data) if $encoder and not ref $data;
+         if (my $encoder = $self->encoder) {
+            $data = $encoder->encode($data) unless ref $data;
+         }
 
          $head->data = $data;
       }

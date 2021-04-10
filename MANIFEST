@@ -4,6 +4,8 @@ MANIFEST
 lib/Async/IPC.pm
 lib/Async/IPC/Base.pm
 lib/Async/IPC/Channel.pm
+lib/Async/IPC/Constants.pm
+lib/Async/IPC/Exception.pm
 lib/Async/IPC/File.pm
 lib/Async/IPC/FileStream.pm
 lib/Async/IPC/Function.pm
@@ -13,9 +15,12 @@ lib/Async/IPC/Handle.pm
 lib/Async/IPC/Loop.pm
 lib/Async/IPC/Periodical.pm
 lib/Async/IPC/Process.pm
+lib/Async/IPC/Reader.pm
 lib/Async/IPC/Routine.pm
 lib/Async/IPC/Semaphore.pm
 lib/Async/IPC/Stream.pm
+lib/Async/IPC/Types.pm
+lib/Async/IPC/Writer.pm
 t/02pod.t
 t/03podcoverage.t
 t/05kwalitee.t
