@@ -25,7 +25,43 @@ my $bson_id_count  = 0;
 my $bson_prev_time = 0;
 my $host_id        = substr md5(hostname), 0, 3;
 
-# Public functions
+=pod
+
+=encoding utf-8
+
+=head1 Name
+
+Async::IPC::Functions - Library functions shared by modules in the distribution
+
+=head1 Synopsis
+
+   use Async::IPC::Functions qw( terminate );
+
+   $loop = Async::IPC::Loop->new;
+
+   # Stop watching the QUIT and TERM signal. Stop the event loop
+   terminate $loop;
+
+=head1 Description
+
+Library functions shared by modules in the distribution
+
+=head1 Configuration and Environment
+
+Defines no attributes
+
+=head1 Subroutines/Methods
+
+=head2 C<bson64id>
+
+   $string = bson64id
+
+Returns a unique id each time it is called. The id is base64 url encoded,
+unique across hosts, unique across threads and the ids alpha sort into the
+order in which they were minted
+
+=cut
+
 sub bson64id (;$) {
    my $now = time;
    my $tm  = (substr pack('N', $now >> 32), 2, 2).(pack 'N', $now % 0xFFFFFFFF);
@@ -41,6 +77,16 @@ sub bson64id (;$) {
    return encode_base64url($tm.$host_id.$pid.$tid.$inc);
 }
 
+=head2 C<ensure_class_loaded>
+
+   $bool = ensure_class_loaded $classname, { options... }
+
+Loads C<classname> at runtime if it is not already loaded. Raises exceptions
+if anything goes wrong. Returns true and the C<options> hash reference is
+optional
+
+=cut
+
 sub ensure_class_loaded ($;$) {
    my ($class, $opts) = @_;
 
@@ -51,7 +97,7 @@ sub ensure_class_loaded ($;$) {
    throw('String [_1] invalid classname', [$class], level => 2)
       unless is_module_name($class);
 
-   return 1 if !$opts->{ignore_loaded} && is_class_loaded($class);
+   return TRUE if !$opts->{ignore_loaded} && is_class_loaded($class);
 
    eval { require_module($class) };
 
@@ -60,28 +106,83 @@ sub ensure_class_loaded ($;$) {
    throw('Class [_1] loaded but package undefined', [$class], level => 2)
       unless is_class_loaded($class);
 
-   return 1;
+   return TRUE;
 }
+
+=head2 C<first_char>
+
+   $char = first_char $string
+
+Return the first character of C<string>
+
+=cut
 
 sub first_char ($) {
    return substr $_[0], 0, 1;
 }
 
+=head2 C<log_debug>
+
+   $bool = log_debug $invocant, $message
+
+Logs the message at the debug level. The C<$invocant> should be a object
+reference with C<name> and C<pid> attributes. Returns true
+
+=cut
+
 sub log_debug ($$;$$) {
    return _logger('debug', @_);
 }
+
+=head2 C<log_error>
+
+   $bool = log_error $invocant, $message
+
+Logs the message at the error level. The C<$invocant> should be a object
+reference with C<name> and C<pid> attributes. Returns true
+
+=cut
 
 sub log_error ($$;$$) {
    return _logger('error', @_);
 }
 
+=head2 C<log_info>
+
+   $bool = log_info $invocant, $message
+
+Logs the message at the info level. The C<$invocant> should be a object
+reference with C<name> and C<pid> attributes. Returns true
+
+=cut
+
 sub log_info ($$;$$) {
    return _logger('info', @_);
 }
 
+=head2 C<log_warn>
+
+   $bool = log_warn $invocant, $message;
+
+Logs the message at the warn level. The C<$invocant> should be a object
+reference with C<name> and C<pid> attributes. Returns true
+
+=cut
+
 sub log_warn ($$;$$) {
    return _logger('warn', @_);
 }
+
+=head2 C<pad>
+
+   $justifed_string = pad $string, $length, $pad_char, $direction
+
+The C<string> is padded out to C<length> characters using C<pad_char>.
+The C<direction> can be C<left>, C<right>, or C<mid> depending on which
+side you want the pad to occur. Defaults to padding on the right with spaces
+if the optional C<pad_char> and C<direction> are not supplied
+
+=cut
 
 sub pad ($$;$$) {
    my ($v, $wanted, $str, $direction) = @_;
@@ -90,7 +191,7 @@ sub pad ($$;$$) {
 
    return $v unless $len > 0;
 
-   $str = q( ) unless defined $str and length $str;
+   $str = SPC unless defined $str and length $str;
 
    my $pad = substr $str x $len, 0, $len;
 
@@ -102,6 +203,15 @@ sub pad ($$;$$) {
          .(substr $pad, 0, int( 0.99999999 + (length $pad) / 2 ));
 }
 
+=head2 C<read_error>
+
+   $bool = read_error $notifier, $bytes_red
+
+Returns true if there was an error receiving the arguments in a child process
+call. Returns false otherwise. Logs the error if one occurs
+
+=cut
+
 sub read_error ($$) {
    my ($notifier, $red) = @_;
 
@@ -109,6 +219,16 @@ sub read_error ($$) {
    return log_debug($notifier, 'EOF'    ) unless length  $red;
    return FALSE;
 }
+
+=head2 C<read_exactly>
+
+   $bytes_red = read_exactly $file_handle, $buffer, $length
+
+Returns the number of bytes read from the file handle on success. Returns
+undefined if there is a read error, returns the null string if nothing is read
+The read bytes are appended to the buffer
+
+=cut
 
 sub read_exactly ($$$) {
    $_[1] = NUL;
@@ -123,6 +243,16 @@ sub read_exactly ($$$) {
    return $_[2];
 }
 
+=head2 C<socket_pair>
+
+   [ $reader, $writer ] = socket_pair
+
+Returns an array reference containing a pair of connected sockets, the first
+is the reader and the second the writer. Raises an exception if the socket
+pair cannot be created
+
+=cut
+
 sub socket_pair () {
    my $rdr = gensym;
    my $wtr = gensym;
@@ -135,6 +265,15 @@ sub socket_pair () {
    return [$rdr, $wtr];
 }
 
+=head2 C<terminate>
+
+   $bool = terminate $loop_object
+
+Returns true. Stops listening for the C<QUIT> and C<TERM> signals. Stops the
+event loop. Returns true
+
+=cut
+
 sub terminate ($) {
    my $loop = shift;
 
@@ -144,17 +283,52 @@ sub terminate ($) {
    return TRUE;
 }
 
+=head2 C<thread_id>
+
+   $int = thread_id
+
+Returns zero if threads are not in use, otherwise returns the current thread
+id
+
+=cut
+
 sub thread_id () {
    return exists $INC{ 'threads.pm' } ? threads->tid() : 0;
 }
+
+=head2 C<throw>
+
+   throw "This program will now abort"
+
+Raises an exception using the the error message provided
+
+=cut
 
 sub throw (;@) {
    EXCEPTION_CLASS->throw(@_);
 }
 
+=head2 C<throw_on_error>
+
+   throw_on_error $error_flag
+
+Raises an exception iff an error has occured
+
+=cut
+
 sub throw_on_error (;@) {
    EXCEPTION_CLASS->throw_on_error(@_);
 }
+
+=head2 C<to_hashref>
+
+   $hash = to_hashref key1 => value1, key2 => value2, ...
+
+Returns a hash reference when provided a list of keys and values. Returns a
+shallow copy if the first argument if it is a hash reference, returns an empty
+hash reference if nothing is passed
+
+=cut
 
 sub to_hashref (;@) {
    return $_[0] && is_hashref $_[0] ? { %{ $_[0] } }
@@ -162,9 +336,27 @@ sub to_hashref (;@) {
                                     : {};
 }
 
+=head2 C<untaint_cmdline>
+
+   $line = untaint_cmdline $string
+
+Untaints the provided C<string> using the command line pattern imported from
+L<Async::IPC::Constants>. See L</untaint_string>
+
+=cut
+
 sub untaint_cmdline (;$) {
    return untaint_string(UNTAINT_CMDLINE, $_[0]);
 }
+
+=head2 C<untaint_string>
+
+   $untainted = untaint_string $regex, $string
+
+Uses the C<regex> to untaind the C<string>. Returns the untainted string or
+raises an exception if the string is tainted
+
+=cut
 
 sub untaint_string ($;$) {
    my ($regex, $string) = @_;
@@ -226,83 +418,6 @@ sub _parse_log_args {
 1;
 
 __END__
-
-=pod
-
-=encoding utf-8
-
-=head1 Name
-
-Async::IPC::Functions - Library functions shared by modules in the distribution
-
-=head1 Synopsis
-
-   use Async::IPC::Functions qw( terminate );
-
-   $loop = Async::IPC::Loop->new;
-
-   # Stop watching the QUIT and TERM signal. Stop the event loop
-   terminate $loop;
-
-=head1 Description
-
-Library functions shared by modules in the distribution
-
-=head1 Configuration and Environment
-
-Defines no attributes
-
-=head1 Subroutines/Methods
-
-=head2 C<log_debug>
-
-   log_debug $invocant, $message;
-
-Logs the message at the debug level. The C<$invocant> should be a object
-reference with C<name> and C<pid> attributes
-
-=head2 C<log_error>
-
-   log_error $invocant, $message;
-
-Logs the message at the error level. The C<$invocant> should be a object
-reference with C<name> and C<pid> attributes
-
-=head2 C<log_info>
-
-   log_info $invocant, $message;
-
-Logs the message at the info level. The C<$invocant> should be a object
-reference with C<name> and C<pid> attributes
-
-=head2 C<log_warn>
-
-   log_warn $invocant, $message;
-
-Logs the message at the warn level. The C<$invocant> should be a object
-reference with C<name> and C<pid> attributes
-
-=head2 C<read_error>
-
-   $bool = read_error $notifier, $bytes_red;
-
-Returns true if there was an error receiving the arguments in a child process
-call. Returns false otherwise. Logs the error if one occurs
-
-=head2 C<read_exactly>
-
-   $bytes_red = read_exactly $file_handle, $buffer, $length;
-
-Returns the number of bytes read from the file handle on success. Returns
-undefined if there is a read error, returns the null string if nothing is read
-The read bytes are appended to the buffer
-
-=head2 C<terminate>
-
-   $bool = terminate $loop_object;
-
-Returns true. Stops listening for the C<QUIT> and C<TERM> signals. Stops the
-event loop
 
 =head1 Diagnostics
 

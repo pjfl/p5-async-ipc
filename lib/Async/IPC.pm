@@ -11,41 +11,6 @@ use Async::IPC::Types     qw( Builder Object );
 use Unexpected::Functions qw( Unspecified );
 use Moo;
 
-# Public attributes
-has 'builder' => is => 'ro',   isa => Builder, required => TRUE;
-
-has 'loop'    => is => 'lazy', isa => Object,
-   builder    => sub { Async::IPC::Loop->new( builder => $_[0]->builder ) };
-
-# Public methods
-sub new_notifier {
-   my ($self, @args) = @_;
-
-   my $args  = to_hashref @args;
-   my $type  = $args->{type} or throw Unspecified, ['type'];
-   my $class = first_char $type eq '+' ? ($args->{type} = substr $type, 1)
-                                       : __PACKAGE__ . '::' . (ucfirst $type);
-
-   ensure_class_loaded $class;
-
-   $args->{builder} //= $self->builder;
-   $args->{loop} //= $self->loop;
-
-   return $class->new($args);
-}
-
-sub new_future {
-   my $self = shift;
-
-   ensure_class_loaded 'Async::IPC::Future';
-
-   return Async::IPC::Future->new($self);
-}
-
-1;
-
-__END__
-
 =pod
 
 =encoding utf-8
@@ -89,11 +54,21 @@ Defines the following attributes;
 
 =item C<builder>
 
-A required instance of L<Class::Usul>
+A required instance of L<Class::Usul>. Dependency injection
+
+=cut
+
+has 'builder' => is => 'ro', isa => Builder, required => TRUE;
 
 =item C<loop>
 
 An instance of L<Async::IPC::Loop>. Created by the constructor
+
+=cut
+
+has 'loop' => is => 'lazy', isa => Object, builder => sub {
+   return Async::IPC::Loop->new( builder => $_[0]->builder );
+};
 
 =back
 
@@ -144,9 +119,41 @@ An instance of L<Async::IPC::Stream>
 
 =back
 
+=cut
+
+sub new_notifier {
+   my ($self, @args) = @_;
+
+   my $args  = to_hashref @args;
+   my $type  = $args->{type} or throw Unspecified, ['type'];
+   my $class = first_char $type eq '+' ? ($args->{type} = substr $type, 1)
+                                       : __PACKAGE__ . '::' . (ucfirst $type);
+
+   ensure_class_loaded $class;
+
+   $args->{builder} //= $self->builder;
+   $args->{loop} //= $self->loop;
+
+   return $class->new($args);
+}
+
 =head2 C<new_future>
 
 Returns an instance of L<Async::IPC::Future>
+
+=cut
+
+sub new_future {
+   my $self = shift;
+
+   ensure_class_loaded 'Async::IPC::Future';
+
+   return Async::IPC::Future->new($self);
+}
+
+1;
+
+__END__
 
 =head1 Diagnostics
 

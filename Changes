@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - POD updates
           - Fixes buffer truncate bug
           - Candidate fix for write buffer truncation bug
           - Added Class::Usul to test requires

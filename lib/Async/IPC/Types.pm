@@ -28,7 +28,7 @@ subtype ConfigProvider, as Object,
    message { _exception_message_for_configprovider($_) };
 
 subtype DataEncoding, as Str,
-   where   { _isa_untainted_encoding($_) },
+   where   { _isa_valid_encoding($_) },
    message { inflate_message 'String [_1] is not a valid encoding', $_ };
 
 coerce DataEncoding,
@@ -80,11 +80,11 @@ sub _has_min_config_attributes {
    return TRUE;
 }
 
-sub _isa_untainted_encoding {
+sub _isa_valid_encoding {
    my $enc = shift;
    my $res;
 
-   try   { $res = !tainted($enc) and find_encoding($enc) ? TRUE : FALSE }
+   try   { $res = !tainted($enc) && find_encoding($enc) ? TRUE : FALSE }
    catch { $res = FALSE };
 
    return $res

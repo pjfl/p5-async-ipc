@@ -22,7 +22,7 @@ has 'codec'        => is => 'ro',   isa => $CODEC_TYPE, default => 'Storable';
 
 has 'decode'       => is => 'lazy', isa => CodeRef, builder => '_build_decode';
 
-has 'encode'       => is => 'lazy', isa => CodeRef, builder => '_build_encode';;
+has 'encode'       => is => 'lazy', isa => CodeRef, builder => '_build_encode';
 
 has 'handle_pair'  => is => 'lazy', isa => ArrayRef,
    builder         => sub { socket_pair() };
@@ -203,7 +203,7 @@ sub _on_stream_read {
       return;
    }
 
-   return FALSE unless length ${$buf_ref }>= 4;
+   return FALSE unless length ${$buf_ref } >= 4;
 
    my $len = unpack 'I', ${$buf_ref};
 

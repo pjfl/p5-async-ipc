@@ -14,150 +14,6 @@ use Moo;
 
 my $notifiers = {};
 
-# Public attributes
-has 'autostart'   => is => 'ro',   isa => Bool, default => TRUE;
-
-has 'builder'     => is => 'ro',   isa => Builder, required => TRUE,
-   handles        => [ 'config', 'debug', 'lock', 'log', 'run_cmd' ];
-
-has 'description' => is => 'ro',   isa => NonEmptySimpleStr, required => TRUE;
-
-has 'factory'     => is => 'lazy', isa => Object, builder => sub {
-   Async::IPC->new( builder => $_[0]->builder, loop => $_[0]->loop, ) };
-
-has 'futures'     => is => 'ro',   isa => HashRef, builder => sub { {} };
-
-has 'loop'        => is => 'ro',   isa => Object, required => TRUE;
-
-has 'name'        => is => 'ro',   isa => NonEmptySimpleStr, required => TRUE;
-
-has 'on_error'    => is => 'ro',   isa => Maybe[CodeRef];
-
-has 'pid'         => is => 'rwp',  isa => PositiveInt, builder => sub { $PID },
-   lazy           => TRUE;
-
-has 'type'        => is => 'lazy', isa => NonEmptySimpleStr, builder => sub {
-   my $class = blessed $_[0]; return lc ((split m{ :: }mx, $class)[-1]);
-};
-
-# Construction
-around 'BUILDARGS' => sub {
-   my ($orig, $self, @args) = @_;
-
-   my $attr = $orig->($self, @args);
-   my $desc = delete $attr->{desc}; $attr->{description} //= $desc;
-
-   return $attr;
-};
-
-sub BUILD {
-   my $self = shift;
-   my $id   = $self->type.'::'.$self->name;
-
-   throw 'Notifier id [_1] not unique', [$id]
-      if exists $notifiers->{$id} && $notifiers->{$id};
-
-   $notifiers->{$id} = TRUE;
-   return;
-}
-
-# Public methods
-sub adopt_future {
-   my ($self, $f) = @_;
-
-   my $fkey = "${f}"; # Stable stringification
-
-   $self->futures->{$fkey} = $f;
-
-   $f->on_ready($self->capture_weakself(sub {
-      my $self = shift;
-      my $f    = delete $self->futures->{$fkey};
-
-      $self->invoke_error($f->failure) if $f->failure;
-   }));
-
-   return $f;
-}
-
-sub capture_weakself {
-   my ($self, $code) = @_; weaken $self;
-
-   throw 'Package [_1] cannot locate method [_2]', [ blessed $self, $code ]
-      unless is_coderef($code) || $self->can($code);
-
-   return sub {
-      $self or return;
-
-      my $cb = is_coderef($code) ? $code : $self->$code;
-
-      unshift @_, $self;
-      goto &$cb;
-   };
-}
-
-sub invoke_error {
-   my ($self, $message, $name, @details) = @_;
-
-   throw $message unless $self->on_error;
-
-   return $self->on_error->($self, $message, $name, @details);
-}
-
-sub invoke_event {
-   my ($self, $ev_name, @args) = @_;
-
-   my $code = $self->_can_event($ev_name)
-      or throw 'Event [_1] unknown', [ $ev_name ];
-
-   return $self->_invoke_event($ev_name, $code, @args);
-}
-
-sub maybe_invoke_event {
-   my ($self, $ev_name, @args) = @_;
-
-   my $code = $self->_can_event($ev_name) or return;
-
-   return $self->_invoke_event($ev_name, $code, @args);
-}
-
-sub replace_weakself {
-   my ($self, $code) = @_; weaken $self;
-
-   throw 'Package [_1] cannot locate method [_2]', [ blessed $self, $code ]
-      unless is_coderef($code) || $self->can($code);
-
-   return sub {
-      return unless $self;
-
-      my $cb = is_coderef($code) ? $code : $self->$code;
-
-      shift @_;
-      unshift @_, $self;
-      goto &$cb;
-   };
-}
-
-# Private methods
-sub _can_event {
-   my ($self, $ev_name) = @_;
-
-   return 0 unless $self->can($ev_name);
-
-   return $self->$ev_name;
-}
-
-sub _invoke_event {
-   my ($self, $ev_name, $code, @args) = @_;
-
-   log_debug $self, "Invoke event ${ev_name}";
-
-   return $code->($self, @args);
-}
-
-1;
-
-__END__
-
 =pod
 
 =encoding utf-8
@@ -187,36 +43,104 @@ Defines the following attributes;
 Read only boolean defaults to true. If false child process creation is delayed
 until first use
 
+=cut
+
+has 'autostart' => is => 'ro', isa => Bool, default => TRUE;
+
 =item C<builder>
 
-A required instance of L<Class::Usul>. Provides object references for;
-configuration, logging, locking, and localisation
+A required instance of the C<Builder> type defined in
+L<Async::IPC::Types>. This injected dependency is satisfied by an instance of
+L<Class::Usul> but could be provided by any object that satisfies the type
+constraint.
+
+Provides object references for; configuration, locking, and logging. Also
+provides a boolean to turn on debugging and a method to run external commands
+
+=cut
+
+has 'builder' => is => 'ro', isa => Builder, required => TRUE,
+   handles    => [ 'config', 'debug', 'lock', 'log', 'run_cmd' ];
 
 =item C<description>
 
 A required, immutable, non empty simple string. The description used by the
 logger
 
+=cut
+
+has 'description' => is => 'ro', isa => NonEmptySimpleStr, required => TRUE;
+
+=item C<factory>
+
+An instance of L<Async::IPC> which this notifier can use to create other
+notifiers
+
+=cut
+
+has 'factory' => is => 'lazy', isa => Object, builder => sub {
+   return Async::IPC->new( builder => $_[0]->builder, loop => $_[0]->loop );
+};
+
 =item C<futures>
+
+This hash reference is used to store any futures adopted by this notifier.
+The reference to the future is deleted from the this hash reference if the
+future fails
+
+=cut
+
+has 'futures' => is => 'ro', isa => HashRef, builder => sub { {} };
 
 =item C<loop>
 
-An instance of L<Async::IPC::Loop>
+A required instance of L<Async::IPC::Loop>. Used to instantiate the L</factory>
+attribute
+
+=cut
+
+has 'loop' => is => 'ro', isa => Object, required => TRUE;
 
 =item C<name>
 
 A required, immutable, non empty simple string. Logger key used to identify a
 log entry
 
+=cut
+
+has 'name' => is => 'ro', isa => NonEmptySimpleStr, required => TRUE;
+
 =item C<on_error>
+
+This optional code references is invoked when a future fails
+
+=cut
+
+has 'on_error' => is => 'ro', isa => Maybe[CodeRef];
 
 =item C<pid>
 
-A non zero positive integer. The process id of this notifier
+An immutable positive integer with a private setter. The process id of this
+notifier
+
+=cut
+
+has 'pid'  => is => 'rwp', isa => PositiveInt, lazy => TRUE,
+   builder => sub { $PID };
 
 =item C<type>
 
+The notifiers type attribute derived from the notifiers class name
+
+=cut
+
+has 'type' => is => 'lazy', isa => NonEmptySimpleStr, builder => sub {
+   my $class = blessed $_[0]; return lc ((split m{ :: }mx, $class)[-1]);
+};
+
 =back
+
+=cut
 
 =head1 Subroutines/Methods
 
@@ -225,16 +149,57 @@ A non zero positive integer. The process id of this notifier
 Allows C<desc> to be used as an alias for the C<description> attribute during
 construction
 
+=cut
+
+around 'BUILDARGS' => sub {
+   my ($orig, $self, @args) = @_;
+
+   my $attr = $orig->($self, @args);
+   my $desc = delete $attr->{desc}; $attr->{description} //= $desc;
+
+   return $attr;
+};
+
 =head2 C<BUILD>
+
+Raises an exception if the C<type> and C<name> attributes do not form a
+unique reference
+
+=cut
+
+sub BUILD {
+   my $self = shift;
+   my $id   = $self->type.'::'.$self->name;
+
+   throw 'Notifier id [_1] not unique', [$id]
+      if exists $notifiers->{$id} && $notifiers->{$id};
+
+   $notifiers->{$id} = TRUE;
+   return;
+}
 
 =head2 C<adopt_future>
 
-=head2 C<can_event>
+Installs a handler which will call C<invoke_error> if the future fails
 
-   $code_ref = $self->can_event( $event_name );
+=cut
 
-Returns the code reference of the handler if this object can handle the named
-event, otherwise returns false
+sub adopt_future {
+   my ($self, $f) = @_;
+
+   my $fkey = "${f}"; # Stable stringification
+
+   $self->futures->{$fkey} = $f;
+
+   $f->on_ready($self->capture_weakself(sub {
+      my $self = shift;
+      my $f    = delete $self->futures->{$fkey};
+
+      $self->invoke_error($f->failure) if $f->failure;
+   }));
+
+   return $f;
+}
 
 =head2 C<capture_weakself>
 
@@ -243,23 +208,119 @@ event, otherwise returns false
 Returns a code reference which when called passes a weakened copy of C<$self>
 to the supplied code reference
 
+=cut
+
+sub capture_weakself {
+   my ($self, $code) = @_; weaken $self;
+
+   throw 'Package [_1] cannot locate method [_2]', [ blessed $self, $code ]
+      unless is_coderef($code) || $self->can($code);
+
+   return sub {
+      return unless $self;
+
+      my $cb = is_coderef($code) ? $code : $self->$code;
+
+      unshift @_, $self;
+      goto &$cb;
+   };
+}
+
 =head2 C<invoke_error>
+
+Either raise an exception using the provided message, or if an C<on_error>
+call back has been provided call that instead
+
+=cut
+
+sub invoke_error {
+   my ($self, $message, $name, @details) = @_;
+
+   throw $message unless $self->on_error;
+
+   return $self->on_error->($self, $message, $name, @details);
+}
 
 =head2 C<invoke_event>
 
    $result = $self->invoke_event( 'event_name', @args );
 
-See L</maybe_invoke_event>
+See L</maybe_invoke_event>. Raises an exception if the event is not implemented
+
+=cut
+
+sub invoke_event {
+   my ($self, $ev_name, @args) = @_;
+
+   my $code = $self->_can_event($ev_name)
+      or throw 'Event [_1] unknown', [ $ev_name ];
+
+   return $self->_invoke_event($ev_name, $code, @args);
+}
 
 =head2 C<maybe_invoke_event>
 
    $result = $self->maybe_invoke_event( 'event_name', @args );
+
+Call the matching event handler code reference if the event name exists as an
+attribute of this notifier
+
+=cut
+
+sub maybe_invoke_event {
+   my ($self, $ev_name, @args) = @_;
+
+   my $code = $self->_can_event($ev_name) or return;
+
+   return $self->_invoke_event($ev_name, $code, @args);
+}
 
 =head2 C<replace_weakself>
 
    $code_ref = $self->capture_weakself( $code_ref );
 
 Like L</capture_weakself> but shifts the original invocant off the stack first
+
+=cut
+
+sub replace_weakself {
+   my ($self, $code) = @_; weaken $self;
+
+   throw 'Package [_1] cannot locate method [_2]', [ blessed $self, $code ]
+      unless is_coderef($code) || $self->can($code);
+
+   return sub {
+      return unless $self;
+
+      my $cb = is_coderef($code) ? $code : $self->$code;
+
+      shift @_;
+      unshift @_, $self;
+      goto &$cb;
+   };
+}
+
+# Returns the code reference of the handler if this object can handle the named
+# event, otherwise returns false
+sub _can_event {
+   my ($self, $ev_name) = @_;
+
+   return FALSE unless $self->can($ev_name);
+
+   return $self->$ev_name;
+}
+
+sub _invoke_event {
+   my ($self, $ev_name, $code, @args) = @_;
+
+   log_debug $self, "Invoke event ${ev_name}";
+
+   return $code->($self, @args);
+}
+
+1;
+
+__END__
 
 =head1 Diagnostics
 

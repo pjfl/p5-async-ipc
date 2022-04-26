@@ -9,6 +9,7 @@ use File::DataClass::Constants ();
 
 my $exception_class = 'Async::IPC::Exception';
 
+# Propagate the exception class to packages that can use it
 File::DataClass::Constants->Exception_Class($exception_class);
 
 sub Exception_Class {
