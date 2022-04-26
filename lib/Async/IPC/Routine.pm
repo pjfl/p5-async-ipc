@@ -16,33 +16,146 @@ extends q(Async::IPC::Base);
 
 my $MODE_TYPE = enum 'MODE_TYPE' => [ 'async', 'sync' ];
 
-has 'after'        => is => 'ro',   isa => Maybe[CodeRef];
+=pod
 
-has 'before'       => is => 'ro',   isa => Maybe[CodeRef];
+=encoding utf-8
+
+=head1 Name
+
+Async::IPC::Routine - Call a method in a child process returning the result
+
+=head1 Synopsis
+
+   use Async::IPC;
+
+   my $factory = Async::IPC->new( builder => Class::Usul->new );
+
+   my $routine = $factory->new_notifier
+      (  code => sub { ... code to run in a child process ... },
+         desc => 'description used by the logger',
+         key  => 'logger key used to identify a log entry',
+         type => 'routine' );
+
+   my $result = $routine->call( @args );
+
+=head1 Description
+
+Call a method is a child process returning the result
+
+=head1 Configuration and Environment
+
+Defines the following attributes;
+
+=over 3
+
+=item C<after>
+
+An optional code reference. Called after the event loop in the asyncronous call
+handler stops
+
+=cut
+
+has 'after' => is => 'ro', isa => Maybe[CodeRef];
+
+=item C<before>
+
+An optional code reference. Called before the event loop in the asyncronous
+call handler is started
+
+=cut
+
+has 'before' => is => 'ro', isa => Maybe[CodeRef];
+
+=item C<call_ch_mode>
+
+Must be a mode type. Either C<async> or C<sync>
+
+=cut
 
 has 'call_ch_mode' => is => 'lazy', isa => $MODE_TYPE;
 
-has 'call_chs'     => is => 'lazy', isa => ArrayRef[Object],
-   builder         => '_build_call_chs';
+=item C<call_chs>
 
-has 'child'        => is => 'lazy', isa => Object, builder => '_build_child';
+An array reference of L<Async::IPC::Channel> objects used by the parent to send
+call arguments to the child process. Built by default
 
-has 'child_args'   => is => 'ro',   isa => HashRef, builder => sub { {} };
+=cut
 
-has 'is_running'   => is => 'rwp',  isa => Bool, default => FALSE;
+has 'call_chs' => is => 'lazy', isa => ArrayRef[Object],
+   builder     => '_build_call_chs';
 
-has 'max_calls'    => is => 'ro',   isa => PositiveInt, default => 0;
+=item C<child>
 
-has 'on_recv'      => is => 'ro',   isa => ArrayRef[CodeRef],
-   builder         => sub { [] };
+The child process object reference. An instance of L<Async::IPC::Process>.
+Build by default
 
-has 'on_return'    => is => 'ro',   isa => ArrayRef[CodeRef],
-   builder         => sub { [] };
+=cut
 
-has 'return_chs'   => is => 'lazy', isa => ArrayRef[Object],
-   builder         => '_build_return_chs';
+has 'child' => is => 'lazy', isa => Object, builder => '_build_child';
 
-# Construction
+=item C<child_args>
+
+A hash reference passed to the child process constructor
+
+=cut
+
+has 'child_args' => is => 'ro', isa => HashRef, builder => sub { {} };
+
+=item C<is_running>
+
+Boolean defaults to false. Set to true when L</start> is called. Set to false
+when L</stop> is called
+
+=cut
+
+has 'is_running' => is => 'rwp', isa => Bool, default => FALSE;
+
+=item C<max_calls>
+
+Positive integer defaults to zero. The maximum number of calls to execute
+before terminating. When zero do not terminate
+
+=cut
+
+has 'max_calls' => is => 'ro', isa => PositiveInt, default => 0;
+
+=item C<on_recv>
+
+An array reference of code references. At least one must be provided. This
+is the code reference(s) called when arguments are received
+
+=cut
+
+has 'on_recv' => is => 'ro', isa => ArrayRef[CodeRef], builder => sub { [] };
+
+=item C<on_return>
+
+Invoke this callback subroutine when the code reference returns a value
+
+=cut
+
+has 'on_return' => is => 'ro', isa => ArrayRef[CodeRef], builder => sub { [] };
+
+=item C<return_chs>
+
+A L<Async::IPC::Channel> object used by the parent process to read the result
+back from the child
+
+=cut
+
+has 'return_chs' => is => 'lazy', isa => ArrayRef[Object],
+   builder       => '_build_return_chs';
+
+=back
+
+=head1 Subroutines/Methods
+
+=head2 C<BUILDARGS>
+
+Splits out the child constructor arguments
+
+=cut
+
 around 'BUILDARGS' => sub {
    my ($orig, $self, @args) = @_;
 
@@ -66,6 +179,13 @@ around 'BUILDARGS' => sub {
    return $attr;
 };
 
+=head2 C<BUILD>
+
+Raise an exception if there is not at least one C<on_recv> handler. Call
+L</start> if C<autostart> is true
+
+=cut
+
 sub BUILD {
    my $self = shift;
 
@@ -76,6 +196,12 @@ sub BUILD {
    return;
 }
 
+=head2 C<DEMOLISH>
+
+Call L</stop> on destruction
+
+=cut
+
 sub DEMOLISH {
    my ($self, $gd) = @_;
 
@@ -85,7 +211,15 @@ sub DEMOLISH {
    return;
 }
 
-# Public methods
+=head2 C<async_call_handler>
+
+   $code = $self->async_call_handler
+
+Returns the code reference that implements an asyncronous event loop. This
+loops until C<< loop->stop >> is called
+
+=cut
+
 sub async_call_handler {
    my $self       = shift;
    my $after      = $self->after;
@@ -108,11 +242,28 @@ sub async_call_handler {
    };
 };
 
+=head2 C<call>
+
+   $result = $routine->call( @args );
+
+Call the code reference in the child process. See L</call_channel>
+
+=cut
+
 sub call {
    my ($self, @args) = @_;
 
    return $self->call_channel(0, @args);
 }
+
+=head2 C<call_channel>
+
+   $result = $routine->call_channel( $channel_no, @args )
+
+So long as C<is_running> is true send the C<args> to the child process on the
+specified C<channel_no>
+
+=cut
 
 sub call_channel {
    my ($self, $channel_no, @args) = @_;
@@ -124,11 +275,27 @@ sub call_channel {
    return $self->call_chs->[$channel_no]->send([@args]);
 }
 
+=head2 C<pid>
+
+   $int = $routine->pid
+
+The id of the child process. Undefined if the child process is not running
+
+=cut
+
 sub pid {
    my $self = shift;
 
    return $self->is_running ? $self->child->pid : undef;
 }
+
+=head2 C<start>
+
+   $bool = $routine->start
+
+Starts the child process and the communication channel(s)
+
+=cut
 
 sub start {
    my $self = shift;
@@ -142,6 +309,14 @@ sub start {
    return TRUE;
 }
 
+=head2 C<stop>
+
+   $bool = $routine->stop;
+
+Stop the child process and communication channel(s)
+
+=cut
+
 sub stop {
    my $self = shift;
 
@@ -149,9 +324,20 @@ sub stop {
 
    $self->_set_is_running(FALSE);
    $self->child->stop;
-   # TODO: Add stop stop_channels
+   _stop_channels($self->return_chs, 'read') if $self->return_chs->[0];
+   _stop_channels($self->call_chs, 'write');
    return TRUE;
 }
+
+=head2 C<sync_call_handler>
+
+   $code = $self->sync_call_handler
+
+Returns a code reference that blocks waiting for parameters to be received.
+It calls the first of the C<on_recv> handlers and sends the result back on
+the return channel
+
+=cut
 
 sub sync_call_handler {
    my $self       = shift;
@@ -301,119 +487,19 @@ sub _start_channels {
    return;
 }
 
+sub _stop_channels {
+   my ($ch, $mode) = @_;
+
+   my $i = 0;
+
+   $ch->[$i++]->stop($mode) while (defined $ch->[$i]);
+
+   return;
+}
+
 1;
 
 __END__
-
-=pod
-
-=encoding utf-8
-
-=head1 Name
-
-Async::IPC::Routine - Call a method in a child process returning the result
-
-=head1 Synopsis
-
-   use Async::IPC;
-
-   my $factory = Async::IPC->new( builder => Class::Usul->new );
-
-   my $routine = $factory->new_notifier
-      (  code => sub { ... code to run in a child process ... },
-         desc => 'description used by the logger',
-         key  => 'logger key used to identify a log entry',
-         type => 'routine' );
-
-   my $result = $routine->call( @args );
-
-=head1 Description
-
-Call a method is a child process returning the result
-
-=head1 Configuration and Environment
-
-Defines the following attributes;
-
-=over 3
-
-=item C<after>
-
-A code reference. Called after the event loop in the asyncronous call handler
-stops
-
-=item C<before>
-
-A code reference. Called before the event loop in the asyncronous call handler
-is started
-
-=item C<call_chs>
-
-A L<Async::IPC::Channel> object used by the parent to send call arguments to
-the child process
-
-=item C<child>
-
-The child process object reference. An instance of L<Async::IPC::Process>
-
-=item C<child_args>
-
-A hash reference passed to the child process constructor
-
-=item C<is_running>
-
-Boolean defaults to true. Set to false when L</stop> is called
-
-=item C<max_calls>
-
-Positive integer defaults to zero. The maximum number of calls to execute
-before terminating. When zero do not terminate
-
-=item C<on_recv>
-
-=item C<on_return>
-
-Invoke this callback subroutine when the code reference returns a value
-
-=item C<return_chs>
-
-A L<Async::IPC::Channel> object used by the parent process to read the result
-back from the child
-
-=back
-
-=head1 Subroutines/Methods
-
-=head2 C<BUILDARGS>
-
-Splits out the child constructor arguments
-
-=head2 C<BUILD>
-
-=head2 C<DEMOLISH>
-
-=head2 C<async_call_handler>
-
-=head2 C<call>
-
-   $result = $routine->call( @args );
-
-Call the code reference in the child process so long as C<is_running> is
-true
-
-=head2 C<call_channel>
-
-=head2 C<pid>
-
-=head2 C<start>
-
-=head2 C<stop>
-
-   $routine->stop;
-
-Stop the child process
-
-=head2 C<sync_call_handler>
 
 =head1 Diagnostics
 

@@ -13,95 +13,6 @@ use Moo;
 
 extends q(Async::IPC::Base);
 
-# Public attributes
-has 'child_args' => is => 'ro', isa => HashRef, builder => sub { {} };
-
-has 'code'       => is => 'ro', isa => CodeRef|ArrayRef|NonEmptySimpleStr,
-   required      => TRUE;
-
-has 'on_exit'    => is => 'ro', isa => CodeRef|Undef;
-
-has '+pid'       => builder => sub { 0 };
-
-# Construction
-sub BUILD {
-   my $self = shift;
-
-   $self->start if $self->autostart;
-
-   return;
-}
-
-sub DEMOLISH {
-   my ($self, $gd) = @_;
-
-   return if $gd;
-
-   $self->stop;
-   return;
-}
-
-# Public methods
-sub is_running {
-   my $self = shift;
-
-   return $self->pid ? CORE::kill 0, $self->pid : FALSE;
-}
-
-sub start {
-   my $self = shift;
-
-   return if $self->is_running;
-
-   my $code = $self->code;
-   my $temp = $self->config->tempdir;
-   my $args = { %{$self->child_args}, async => TRUE, ignore_zombies => FALSE, };
-   my $name = $self->config->pathname->abs2rel.' - '.(lc $self->name);
-   my $cmd  = (is_coderef $code)
-            ? [ $self->capture_weakself(sub {
-                   $PROGRAM_NAME = $name; $code->(shift) }) ]
-            : $code;
-
-   $args->{err} = $temp->catfile( (lc $self->name).'.err' ) if $self->debug;
-
-   $self->_set_pid(my $pid = $self->run_cmd($cmd, $args)->pid);
-   $self->_watch_child($pid);
-   log_info $self, 'Started '.$self->description;
-   return TRUE;
-}
-
-sub stop {
-   my $self = shift;
-
-   return unless $self->is_running;
-
-   log_debug $self, 'Stopping '.$self->description;
-   CORE::kill 'TERM', $self->pid;
-   return TRUE;
-}
-
-# Private methods
-sub _watch_child {
-   my ($self, $pid) = @_;
-
-   my $on_exit = sub {
-      my $self = shift;
-      my $pid  = shift;
-      my $rv   = WEXITSTATUS(shift);
-
-      log_info $self, ucfirst $self->description." stopped rv ${rv}";
-
-      return $self->maybe_invoke_event('on_exit', $pid, $rv);
-   };
-
-   $self->loop->watch_child($pid, $self->capture_weakself($on_exit));
-   return;
-}
-
-1;
-
-__END__
-
 =pod
 
 =encoding utf-8
@@ -136,15 +47,30 @@ Defines the following attributes;
 
 Optional hash reference passed to L<run command|Class::Usul::Cmd>
 
+=cut
+
+has 'child_args' => is => 'ro', isa => HashRef, builder => sub { {} };
+
 =item C<code>
 
 Required code reference / array reference / non empty simple string to execute
 in the child process
 
+=cut
+
+has 'code'  => is => 'ro', isa => CodeRef|ArrayRef|NonEmptySimpleStr,
+   required => TRUE;
+
 =item C<on_exit>
 
 The code reference to call when the process exits. The factory wraps this
 reference to log when it's called
+
+=cut
+
+has 'on_exit' => is => 'ro', isa => CodeRef|Undef;
+
+has '+pid' => builder => sub { 0 };
 
 =back
 
@@ -154,9 +80,30 @@ reference to log when it's called
 
 Starts the child process, sets on exits and return callbacks
 
+=cut
+
+sub BUILD {
+   my $self = shift;
+
+   $self->start if $self->autostart;
+
+   return;
+}
+
 =head2 C<DEMOLISH>
 
 Stops the process prior to object destruction
+
+=cut
+
+sub DEMOLISH {
+   my ($self, $gd) = @_;
+
+   return if $gd;
+
+   $self->stop;
+   return;
+}
 
 =head2 C<is_running>
 
@@ -164,17 +111,83 @@ Stops the process prior to object destruction
 
 Returns true if the child process is running
 
+=cut
+
+sub is_running {
+   my $self = shift;
+
+   return $self->pid ? CORE::kill 0, $self->pid : FALSE;
+}
+
 =head2 C<start>
 
    $process->start;
 
 Start the child process
 
+=cut
+
+sub start {
+   my $self = shift;
+
+   return if $self->is_running;
+
+   my $code = $self->code;
+   my $temp = $self->config->tempdir;
+   my $args = { %{$self->child_args}, async => TRUE, ignore_zombies => FALSE, };
+   my $name = $self->config->pathname->abs2rel.' - '.(lc $self->name);
+   my $cmd  = (is_coderef $code)
+            ? [ $self->capture_weakself(sub {
+                   $PROGRAM_NAME = $name; $code->(shift) }) ]
+            : $code;
+
+   $args->{err} = $temp->catfile( (lc $self->name).'.err' ) if $self->debug;
+
+   $self->_set_pid(my $pid = $self->run_cmd($cmd, $args)->pid);
+   $self->_watch_child($pid);
+   log_info $self, 'Started '.$self->description;
+   return TRUE;
+}
+
 =head2 C<stop>
 
    $process->stop;
 
 Stop the child process
+
+=cut
+
+sub stop {
+   my $self = shift;
+
+   return unless $self->is_running;
+
+   log_debug $self, 'Stopping '.$self->description;
+   CORE::kill 'TERM', $self->pid;
+   return TRUE;
+}
+
+# Private methods
+sub _watch_child {
+   my ($self, $pid) = @_;
+
+   my $on_exit = sub {
+      my $self = shift;
+      my $pid  = shift;
+      my $rv   = WEXITSTATUS(shift);
+
+      log_info $self, ucfirst $self->description." stopped rv ${rv}";
+
+      return $self->maybe_invoke_event('on_exit', $pid, $rv);
+   };
+
+   $self->loop->watch_child($pid, $self->capture_weakself($on_exit));
+   return;
+}
+
+1;
+
+__END__
 
 =head1 Diagnostics
 

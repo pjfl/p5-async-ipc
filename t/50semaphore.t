@@ -37,7 +37,9 @@ my $timer       =  $factory->new_notifier
 
 my $id = $loop->watch_signal( INT => sub { $loop->stop } );
 
-$loop->start; $timer->stop; $semaphore->stop;
+$loop->start; # Block here until loop stop called
+$timer->stop;
+$semaphore->stop;
 $loop->unwatch_signal( INT => $id );
 
 for (sort { $a <=> $b } keys %{ $results }) {

@@ -17,35 +17,40 @@ my $log      =  $prog->log;
 $prog->config->logfile->exists and $prog->config->logfile->unlink;
 
 sub wait_for (&) {
-   my ($cond) = @_; my (undef, $callerfile, $callerline) = caller;
+   my ($cond) = @_;
+   my (undef, $callerfile, $callerline) = caller;
+   my $timedout = 0;
 
-   my $timedout = 0; $loop->watch_time
-      ( my $timerid = $loop->uuid, sub { $timedout = 1 }, 10, );
+   $loop->watch_time(my $timerid = $loop->uuid, sub { $timedout = 1 }, 10);
 
-   $loop->once( 1 ) while (not $cond->() and not $timedout);
+   $loop->once(1) while (!$cond->() && !$timedout);
 
    if ($timedout) {
       die "Nothing was ready after 10 second wait; called at $callerfile "
         . "line $callerline\n";
    }
-   else { $loop->unwatch_time( $timerid ) }
+   else { $loop->unwatch_time($timerid) }
 }
 
-my $found    = 0;
-my $lost     = 0;
-my $size     = 0;
-my $path     = io [ 't', 'dummy' ]; $path->exists and $path->unlink;
-my $file     = $factory->new_notifier
-   (  type     => 'file',
-      desc     => 'the file test notifier',
-      interval => 0.5,
-      name     => 'file1',
-      on_size_changed => sub { $size = $_[ 2 ] },
-      on_stat_changed => sub {
-         not $_[ 1 ] and $_[ 2 ] and $found = 1;
-         $_[ 1 ] and not $_[ 2 ] and $lost  = 1;
-      },
-      path     => $path, );
+my $found = 0;
+my $lost  = 0;
+my $size  = 0;
+my $path  = io['t', 'dummy'];
+
+$path->unlink if $path->exists;
+
+my $file  = $factory->new_notifier(
+   type     => 'file',
+   desc     => 'the file test notifier',
+   interval => 0.5,
+   name     => 'file1',
+   path     => $path,
+   on_size_changed => sub { $size = $_[2] },
+   on_stat_changed => sub {
+      $found = 1 if !$_[1] &&  $_[2];
+      $lost  = 1 if  $_[1] && !$_[2];
+   },
+);
 
 $loop->once;
 is $found, 0, 'File not found';
@@ -64,25 +69,26 @@ my $called = 0; my $count = 0;
 
 my ($rdr, $wtr) = @{ nonblocking_write_pipe_pair() };
 
-# This breaks if the interval is too small < 2
+# This breaks if the interval is too small < 3
 SKIP: {
    $ENV{AUTHOR_TESTING} or skip 'Too fragile', 1;
 
-   $file = $factory->new_notifier
-      (  type     => 'file',
-         desc     => 'the file test notifier',
-         handle   => $rdr,
-         interval => 2,
-         name     => 'file2',
-         on_stat_changed => sub { $called++; $count++ }, );
+   $file = $factory->new_notifier(
+      type     => 'file',
+      desc     => 'the file test notifier',
+      handle   => $rdr,
+      interval => 3,
+      name     => 'file2',
+      on_stat_changed => sub { $called++; $count++ },
+   );
 
-   $loop->once( 1 );
+   $loop->once(1);
    is $called, 0, 'Stat not changed open file handle';
-   is $wtr->syswrite( 'xxx' ), 3, 'Writes 3 bytes';
+   is $wtr->syswrite('xxx'), 3, 'Writes 3 bytes';
    wait_for { $called }; $called = 0;
    is $count, 1, 'Stat changed open file handle 1';
 # Printing three bytes does not work coz the size of the file doesn't change
-   is $wtr->syswrite( 'xxxx' ), 4, 'Write 4 bytes';
+   is $wtr->syswrite('xxxx'), 4, 'Write 4 bytes';
    wait_for { $called };
    is $count, 2, 'Stat changed open file handle 2';
    undef $file;
@@ -90,31 +96,35 @@ SKIP: {
 
 $called = 0;
 $count  = 0;
-$path   = io [ 't', 'inotify_test' ]; $path->touch;
-$file   = $factory->new_notifier
-   (  type => 'file',
-      desc => 'the file test notifier',
-      name => 'file3',
-      on_stat_changed => sub { $called++; $count++ },
-      path => $path, );
+$path   = io['t', 'inotify_test'];
 
-$loop->once( 1 );
+$path->touch;
+
+$file   = $factory->new_notifier(
+   type => 'file',
+   desc => 'the file test notifier',
+   name => 'file3',
+   on_stat_changed => sub { $called++; $count++ },
+   path => $path,
+);
+
+$loop->once(1);
 is $count, 0, 'OS dependent starts zero';
-$path->print( 'xxx' )->flush;
+$path->print('xxx')->flush;
 wait_for { $called }; $called = 0;
 is $count, 1, 'OS dependent notifier 1';
 # Printing three bytes does not work coz the size of the file doesn't change
-$path->print( 'xxxx' )->flush;
+$path->print('xxxx')->flush;
 wait_for { $called }; $called = 0;
 is $count, 2, 'OS dependent notifier 2';
 $path->close->unlink;
 wait_for { $called }; $called = 0;
 is $count, 3, 'OS dependent notifier 3';
-$path->print( 'xxx' )->flush;
+$path->print('xxx')->flush;
 wait_for { $called }; $called = 0;
 is $count, 4, 'OS dependent notifier 4';
 $path->close->unlink;
 undef $file;
 
-$prog->debug or $prog->config->logfile->unlink;
+$prog->config->logfile->unlink unless $prog->debug;
 done_testing;

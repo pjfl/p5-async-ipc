@@ -9,48 +9,6 @@ use Moo;
 
 extends q(Async::IPC::Routine);
 
-# Construction
-around 'BUILDARGS' => sub {
-   my ($orig, $self, @args) = @_;
-
-   my $attr = $orig->($self, @args);
-   my $lock = $attr->{builder}->lock;
-   my $code = $attr->{on_recv}->[0];
-
-   $attr->{on_recv}->[0] = sub {
-      $lock->reset(k => $_[1], p => $_[2]); $code->(@_);
-   };
-
-   return $attr;
-};
-
-sub DEMOLISH {
-   my ($self, $gd) = @_;
-
-   return if $gd;
-
-   eval { $self->lock->reset(k => refaddr $self) };
-
-   return;
-}
-
-# Public methods
-sub raise {
-   my $self = shift;
-
-   return unless $self->is_running;
-
-   my $key = refaddr $self;
-
-   return $self->call($key, $PID) if $self->lock->set(k => $key, async => TRUE);
-
-   return TRUE;
-}
-
-1;
-
-__END__
-
 =pod
 
 =encoding utf-8
@@ -86,15 +44,61 @@ Defines no attributes
 =head2 C<BUILDARGS>
 
 Wraps the code reference. When called it will reset the lock set by the
-L</raise> call
+L</raise> call thereby lowering the semaphore
+
+=cut
+
+around 'BUILDARGS' => sub {
+   my ($orig, $self, @args) = @_;
+
+   my $attr = $orig->($self, @args);
+   my $lock = $attr->{builder}->lock;
+   my $code = $attr->{on_recv}->[0];
+
+   $attr->{on_recv}->[0] = sub {
+      $lock->reset(k => $_[1], p => $_[2]); $code->(@_);
+   };
+
+   return $attr;
+};
 
 =head2 C<DEMOLISH>
 
 Drops the lock in the event of global destruction
 
+=cut
+
+sub DEMOLISH {
+   my ($self, $gd) = @_;
+
+   return if $gd;
+
+   eval { $self->lock->reset(k => refaddr $self) };
+
+   return;
+}
+
 =head2 C<raise>
 
 Call the child process, setting a semaphore
+
+=cut
+
+sub raise {
+   my $self = shift;
+
+   return unless $self->is_running;
+
+   my $key = refaddr $self;
+
+   return $self->call($key, $PID) if $self->lock->set(k => $key, async => TRUE);
+
+   return TRUE;
+}
+
+1;
+
+__END__
 
 =head1 Diagnostics
 

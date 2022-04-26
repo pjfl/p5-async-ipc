@@ -22,7 +22,7 @@ Async::IPC - Asyncronous inter process communication
 
 A callback style API implemented on [AnyEvent](https://metacpan.org/pod/AnyEvent)
 
-I couldn't make [IO::Async](https://metacpan.org/pod/IO::Async) work with [AnyEvent](https://metacpan.org/pod/AnyEvent) and [EV](https://metacpan.org/pod/EV) so this instead
+I couldn't make [IO::Async](https://metacpan.org/pod/IO%3A%3AAsync) work with [AnyEvent](https://metacpan.org/pod/AnyEvent) and [EV](https://metacpan.org/pod/EV) so this instead
 
 This module implements a factory pattern. It creates instances of the
 notifier classes
@@ -33,11 +33,11 @@ Defines the following attributes;
 
 - `builder`
 
-    A required instance of [Class::Usul](https://metacpan.org/pod/Class::Usul)
+    A required instance of [Class::Usul](https://metacpan.org/pod/Class%3A%3AUsul)
 
 - `loop`
 
-    An instance of [Async::IPC::Loop](https://metacpan.org/pod/Async::IPC::Loop). Created by the constructor
+    An instance of [Async::IPC::Loop](https://metacpan.org/pod/Async%3A%3AIPC%3A%3ALoop). Created by the constructor
 
 # Subroutines/Methods
 
@@ -48,43 +48,43 @@ class. The notifier types and their classes are;
 
 - `channel`
 
-    An instance of [Async::IPC::Channel](https://metacpan.org/pod/Async::IPC::Channel)
+    An instance of [Async::IPC::Channel](https://metacpan.org/pod/Async%3A%3AIPC%3A%3AChannel)
 
 - `file`
 
-    An instance of [Async::IPC::File](https://metacpan.org/pod/Async::IPC::File)
+    An instance of [Async::IPC::File](https://metacpan.org/pod/Async%3A%3AIPC%3A%3AFile)
 
 - `function`
 
-    An instance of [Async::IPC::Function](https://metacpan.org/pod/Async::IPC::Function)
+    An instance of [Async::IPC::Function](https://metacpan.org/pod/Async%3A%3AIPC%3A%3AFunction)
 
 - `handle`
 
-    An instance of [Async::IPC::Handle](https://metacpan.org/pod/Async::IPC::Handle)
+    An instance of [Async::IPC::Handle](https://metacpan.org/pod/Async%3A%3AIPC%3A%3AHandle)
 
 - `periodical`
 
-    An instance of [Async::IPC::Periodical](https://metacpan.org/pod/Async::IPC::Periodical)
+    An instance of [Async::IPC::Periodical](https://metacpan.org/pod/Async%3A%3AIPC%3A%3APeriodical)
 
 - `process`
 
-    An instance of [Async::IPC::Process](https://metacpan.org/pod/Async::IPC::Process)
+    An instance of [Async::IPC::Process](https://metacpan.org/pod/Async%3A%3AIPC%3A%3AProcess)
 
 - `routine`
 
-    An instance of [Async::IPC::Routine](https://metacpan.org/pod/Async::IPC::Routine)
+    An instance of [Async::IPC::Routine](https://metacpan.org/pod/Async%3A%3AIPC%3A%3ARoutine)
 
 - `semaphore`
 
-    An instance of [Async::IPC::Semaphore](https://metacpan.org/pod/Async::IPC::Semaphore)
+    An instance of [Async::IPC::Semaphore](https://metacpan.org/pod/Async%3A%3AIPC%3A%3ASemaphore)
 
 - `stream`
 
-    An instance of [Async::IPC::Stream](https://metacpan.org/pod/Async::IPC::Stream)
+    An instance of [Async::IPC::Stream](https://metacpan.org/pod/Async%3A%3AIPC%3A%3AStream)
 
 ## `new_future`
 
-Returns an instance of [Async::IPC::Future](https://metacpan.org/pod/Async::IPC::Future)
+Returns an instance of [Async::IPC::Future](https://metacpan.org/pod/Async%3A%3AIPC%3A%3AFuture)
 
 # Diagnostics
 
@@ -92,7 +92,7 @@ None
 
 # Dependencies
 
-- [Class::Usul](https://metacpan.org/pod/Class::Usul)
+- [Class::Usul](https://metacpan.org/pod/Class%3A%3AUsul)
 - [Moo](https://metacpan.org/pod/Moo)
 - [POSIX](https://metacpan.org/pod/POSIX)
 
