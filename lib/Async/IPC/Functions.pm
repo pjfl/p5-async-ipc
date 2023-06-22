@@ -83,7 +83,15 @@ sub bson64id (;$) {
 
 Loads C<classname> at runtime if it is not already loaded. Raises exceptions
 if anything goes wrong. Returns true and the C<options> hash reference is
-optional
+optional. Options are
+
+=over
+
+=item ignore_loaded
+
+If true attempt to load the class even if it is already loaded
+
+=back
 
 =cut
 
@@ -125,7 +133,7 @@ sub first_char ($) {
 
    $bool = log_debug $invocant, $message
 
-Logs the message at the debug level. The C<$invocant> should be a object
+Logs the message at the debug level. The C<invocant> should be a object
 reference with C<name> and C<pid> attributes. Returns true
 
 =cut
@@ -208,7 +216,8 @@ sub pad ($$;$$) {
    $bool = read_error $notifier, $bytes_red
 
 Returns true if there was an error receiving the arguments in a child process
-call. Returns false otherwise. Logs the error if one occurs
+call. Returns false otherwise. Logs the error if one occurs, logs C<EOF> if
+debug is enabled
 
 =cut
 
@@ -225,7 +234,7 @@ sub read_error ($$) {
    $bytes_red = read_exactly $file_handle, $buffer, $length
 
 Returns the number of bytes read from the file handle on success. Returns
-undefined if there is a read error, returns the null string if nothing is read
+undefined if there is a read error, returns the null string if nothing is read.
 The read bytes are appended to the buffer
 
 =cut

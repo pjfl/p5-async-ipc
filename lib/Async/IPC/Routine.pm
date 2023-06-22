@@ -335,7 +335,7 @@ sub stop {
 
 Returns a code reference that blocks waiting for parameters to be received.
 It calls the first of the C<on_recv> handlers and sends the result back on
-the return channel
+the return channel(s)
 
 =cut
 

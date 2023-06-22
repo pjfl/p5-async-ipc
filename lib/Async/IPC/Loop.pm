@@ -399,8 +399,8 @@ sub unwatch_signal {
 
    $loop->watch_time( $id, $callback_sub, $delay, $interval );
 
-Invoke the callback subroutine after C<$delay> seconds. Repeat at C<$interval>
-seconds. If the C<$interval> argument is either C<abs> or C<rel> then invoke
+Invoke the callback subroutine after C<delay> seconds. Repeat at C<interval>
+seconds. If the C<interval> argument is either C<abs> or C<rel> then invoke
 the callback only once. Requires a unique identifier
 
 =cut
