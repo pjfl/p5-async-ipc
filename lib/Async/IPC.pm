@@ -2,7 +2,7 @@ package Async::IPC;
 
 use 5.010001;
 use namespace::autoclean;
-use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 36 $ =~ /\d+/gmx );
+use version; our $VERSION = qv( sprintf '0.1.%d', q$Rev: 37 $ =~ /\d+/gmx );
 
 use Async::IPC::Constants qw( EXCEPTION_CLASS TRUE );
 use Async::IPC::Functions qw( ensure_class_loaded first_char throw to_hashref );

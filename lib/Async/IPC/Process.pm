@@ -135,17 +135,17 @@ sub start {
    my $code = $self->code;
    my $temp = $self->config->tempdir;
    my $args = { %{$self->child_args}, async => TRUE, ignore_zombies => FALSE, };
-   my $name = $self->config->pathname->abs2rel.' - '.(lc $self->name);
+   my $name = $self->config->script . ' - ' . (lc $self->name);
    my $cmd  = (is_coderef $code)
             ? [ $self->capture_weakself(sub {
                    $PROGRAM_NAME = $name; $code->(shift) }) ]
             : $code;
 
-   $args->{err} = $temp->catfile( (lc $self->name).'.err' ) if $self->debug;
+   $args->{err} = $temp->catfile( (lc $self->name) . '.err' ) if $self->debug;
 
    $self->_set_pid(my $pid = $self->run_cmd($cmd, $args)->pid);
    $self->_watch_child($pid);
-   log_info $self, 'Started '.$self->description;
+   log_info $self, 'Started ' . $self->description;
    return TRUE;
 }
 

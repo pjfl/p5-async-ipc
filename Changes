@@ -1,5 +1,6 @@
 Revision history for Async::IPC
 
+          - Shortened program name in ps listing
           - More POD updates
           - POD updates
           - Fixes buffer truncate bug
